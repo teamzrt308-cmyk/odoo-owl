@@ -1,16 +1,18 @@
 /**
  * views/fields/boolean/boolean_field.js
  * Widget de champ Boolean (case à cocher) rendu par OWL, via
- * owl/field_bridge.js -- même pattern que char_field.js.
+ * owl/field_bridge.js. Classe exportée pour embarquement en
+ * sous-composant OWL du renderer one2many (callback onChange).
  */
 
 import { renderOwlField, computeReadonly } from "../../../owl/field_bridge.js";
 
-class BooleanFieldOwl extends owl.Component {
+export class BooleanFieldOwl extends owl.Component {
   static template = owl.xml`
     <div class="o-checkbox form-check">
       <input type="checkbox"
              class="form-check-input"
+             t-ref="input"
              t-att-id="props.id"
              t-att-name="props.name"
              t-att-readonly="props.readonly"
@@ -25,15 +27,25 @@ class BooleanFieldOwl extends owl.Component {
     id: String,
     name: String,
     readonly: { type: Boolean, optional: true },
-    initialValue: { type: Boolean, optional: true },
+    initialValue: { type: [Boolean, Number], optional: true }, // one2many : 0/1 possibles
+    onChange: { type: Function, optional: true },
   };
 
   setup() {
+    this.inputRef = owl.useRef("input");
     this.state = owl.useState({ checked: !!this.props.initialValue });
+    owl.onWillUpdateProps((nextProps) => {
+      const input = this.inputRef.el;
+      if (input && input === document.activeElement) return;
+      if (!!nextProps.initialValue !== this.state.checked) {
+        this.state.checked = !!nextProps.initialValue;
+      }
+    });
   }
 
   onChange(ev) {
     this.state.checked = ev.target.checked;
+    if (this.props.onChange) this.props.onChange(ev.target.checked);
   }
 }
 

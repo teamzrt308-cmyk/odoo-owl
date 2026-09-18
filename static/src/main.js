@@ -10,11 +10,12 @@ import "./views/view.js";
 import "./webclient/home_menu/home_menu.js";
 
 
-// OWL — les premières briques du moteur sont désormais rendues par OWL :
-// les widgets de champ simples via owl/field_bridge.js (char, text,
-// integer, float, boolean, selection, date, datetime, monetary) et la
-// vue kanban via views/kanban/kanban_renderer.js (arch compilée en
-// template OWL). Voir static/src/owl/README.md.
+// OWL — les widgets de champ sont tous rendus par OWL : les types simples
+// via owl/field_bridge.js (char, text, integer, float, boolean, selection,
+// date, datetime, monetary), les relationnels many2one/many2many_tags et
+// le tableau one2many (sous-composants OWL par cellule, état réactif des
+// lignes) ; la vue kanban via views/kanban/kanban_renderer.js (arch
+// compilée en template OWL). Voir static/src/owl/README.md.
 
 // Fusionné depuis core/browser/service_worker.js : chez Odoo l'enregistrement
 // du Service Worker se fait directement au boot, sans fichier dédié.

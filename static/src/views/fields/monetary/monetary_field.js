@@ -2,13 +2,14 @@
  * views/fields/monetary/monetary_field.js
  * Widget de champ Monetary rendu par OWL, via owl/field_bridge.js.
  * Champ en lecture seule (le montant est calculé côté règles métier /
- * serveur, jamais saisi) : pas d'état réactif, la valeur est posée au
- * mount depuis les props.
+ * serveur, jamais saisi) : pas d'état, la valeur est portée par les
+ * props -- les recalculs des règles métier rafraîchissent donc
+ * l'affichage à chaque re-render (attribut value, input non "dirty").
  */
 
 import { renderOwlField } from "../../../owl/field_bridge.js";
 
-class MonetaryFieldOwl extends owl.Component {
+export class MonetaryFieldOwl extends owl.Component {
   static template = owl.xml`
     <input type="text"
            class="o_input"
@@ -22,7 +23,7 @@ class MonetaryFieldOwl extends owl.Component {
   static props = {
     id: String,
     name: String,
-    initialValue: { type: String, optional: true },
+    initialValue: { type: [String, Number], optional: true }, // one2many : valeurs canoniques numériques
   };
 }
 

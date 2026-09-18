@@ -44,8 +44,8 @@ export function buildDocumentGraph(container, fieldsInfo, rawRootValues = {}) {
  * -- uniquement les champs scalaires simples (les many2one/many2many ne
  * sont jamais des champs "compute" dans ce projet pour l'instant). Ignore
  * le champ actuellement en cours de saisie pour ne pas gêner l'utilisateur.
- * Le mapping des LIGNES one2many se fait séparément via applyLineRowToDom()
- * (voir form_controller.js), qui a accès au fieldWrapper de chaque champ.
+ * Le mapping des LIGNES one2many est géré par le composant OWL du widget
+ * (host.applyLineUpdates, voir fields/one2many/one2many_field.js).
  */
 export function applyDocumentGraphToDom(container, fieldsInfo, graph) {
   for (const [fieldName, value] of Object.entries(graph.root || {})) {
@@ -54,20 +54,6 @@ export function applyDocumentGraphToDom(container, fieldsInfo, graph) {
     const el = container.querySelector(`#field-${fieldName}`);
     if (!el || el === document.activeElement) continue;
     setElementValue(el, info, value);
-  }
-}
-
-/**
- * Applique les valeurs recalculées d'UNE ligne à sa <tr> correspondante.
- * Séparé de applyDocumentGraphToDom() car le mapping ligne <-> <tr> se fait
- * plus naturellement côté form_controller.js (qui a accès aux fieldWrapper
- * des one2many via le DOM).
- */
-export function applyLineRowToDom(tr, row) {
-  for (const [col, value] of Object.entries(row)) {
-    const ref = tr._cellRefs && tr._cellRefs[col];
-    if (!ref || ref.el === document.activeElement) continue;
-    setElementValue(ref.el, ref.info, value);
   }
 }
 
@@ -98,40 +84,17 @@ export function collectFormData(container, fieldsInfo) {
     }
 
     if (info.type === "one2many") {
+      // Le widget one2many est un composant OWL (views/fields/one2many/)
+      // qui publie getLines() sur son hôte DOM (voir owl/field_bridge.js) :
+      // les valeurs des lignes viennent de l'état réactif du composant,
+      // plus aucun scraping DOM. Les suppressions de lignes initiales y
+      // sont déjà matérialisées { id, _deleted: true }.
       const fieldWrapper = container.querySelector(`[data-one2many="${fieldName}"] [data-o2m-root="true"]`);
-      if (!fieldWrapper) {
+      if (!fieldWrapper || !fieldWrapper._owlOne2many) {
         data[fieldName] = [];
         continue;
       }
-      const rows = Array.from(fieldWrapper._getTbody().querySelectorAll("tr")).filter((tr) => tr._cellRefs);
-
-      const lines = [];
-      const currentIds = new Set();
-
-      rows.forEach((tr) => {
-        // On part de l'enregistrement brut (voir addRow() -- peut contenir
-        // des champs techniques non déclarés comme colonne, ex:
-        // purchase_line_id/sale_line_id sur stock.move) puis on superpose
-        // les valeurs actuelles des colonnes réellement affichées/éditées.
-        const rowValues = { ...(tr._rawRowData || {}) };
-        for (const [col, ref] of Object.entries(tr._cellRefs)) {
-          rowValues[col] = getElementValue(ref.el, ref.info);
-        }
-        if (tr._recordId) {
-          currentIds.add(tr._recordId);
-          rowValues.id = tr._recordId;
-        }
-        lines.push(rowValues);
-      });
-
-      const initialIds = fieldWrapper._initialLineIds || new Set();
-      for (const id of initialIds) {
-        if (!currentIds.has(id)) {
-          lines.push({ id, _deleted: true });
-        }
-      }
-
-      data[fieldName] = lines;
+      data[fieldName] = fieldWrapper.getLines();
       continue;
     }
 

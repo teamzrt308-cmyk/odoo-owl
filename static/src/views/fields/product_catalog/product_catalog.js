@@ -14,47 +14,15 @@ const CATALOG_QTY_FIELD_CANDIDATES = ["product_uom_qty", "product_qty", "quantit
  */
 export function detectCatalogFieldNames(subFields, renderedFields = null) {
   // Si l'ensemble des colonnes réellement rendues est fourni, on exige
-  // STRICTEMENT que le champ soit aussi une colonne affichée (donc une
-  // entrée _cellRefs existera). Un champ présent dans subFields (métadonnées
-  // du modèle) mais absent des colonnes rendues n'a jamais de cellule DOM :
-  // l'utiliser plante plus tard dans applyCatalogSelection/addRow.
+  // STRICTEMENT que le champ soit aussi une colonne affichée (une cellule
+  // du tableau one2many existera). Un champ présent dans subFields
+  // (métadonnées du modèle) mais absent des colonnes rendues n'a jamais de
+  // cellule : l'utiliser plante plus tard dans applyCatalogSelection.
   const isUsable = renderedFields ? (f) => renderedFields.has(f) : (f) => !!subFields[f];
 
   const productFields = CATALOG_PRODUCT_FIELD_CANDIDATES.filter((f) => subFields[f] && isUsable(f));
   const qtyField = CATALOG_QTY_FIELD_CANDIDATES.find((f) => subFields[f] && isUsable(f)) || null;
   return { productFields, qtyField };
-}
-
-/**
- * The product_id field (even if hidden/d-none) always remains present in the
- * DOM with the actual product.product value—so it is ALWAYS the one
- * used as the reference to locate an existing row, regardless of which
- * field is visually displayed.
- */
-export function getExistingQuantitiesFromTbody(tbody, qtyField) {
-  const map = {};
-  if (!qtyField) return map;
-
-  Array.from(tbody.querySelectorAll("tr.o_data_row")).forEach((tr) => {
-    const cellRefs = tr._cellRefs;
-    if (!cellRefs || !cellRefs["product_id"] || !cellRefs[qtyField]) return;
-
-    const productWrapper = cellRefs["product_id"].el;
-    const hiddenInput = productWrapper?.querySelector('input[type="hidden"]');
-    const qtyEl = cellRefs[qtyField].el;
-
-    const rawId = hiddenInput?.value || "";
-    if (!rawId || rawId.startsWith("tmp:")) return;
-
-    const productId = parseInt(rawId, 10);
-    const qty = qtyEl?.value ? parseFloat(qtyEl.value) : 0;
-
-    if (!isNaN(productId)) {
-      map[productId] = (map[productId] || 0) + qty;
-    }
-  });
-
-  return map;
 }
 
 function formatCatalogPrice(price) {

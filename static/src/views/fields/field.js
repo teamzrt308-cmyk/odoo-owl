@@ -94,10 +94,3 @@ export function renderField(node, fieldsInfo, initialValues, securityContext, ha
   cell.appendChild(valueWrapper);
   return cell;
 }
-
-/** Used by fields/one2many/one2many_field.js to create a row input cell. */
-export function createFieldInput(fieldName, info, initialValue) {
-  const renderer = SUPPORTED_FIELD_WIDGETS[info.type];
-  if (!renderer) return null;
-  return renderer(fieldName, info, null, initialValue);
-}

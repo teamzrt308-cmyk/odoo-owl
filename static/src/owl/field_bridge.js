@@ -38,25 +38,43 @@ export function computeRequired(node, info, initialValues) {
  * conteneur immédiatement. C'est le cœur de l'adaptateur : chaque
  * renderXField() n'a plus qu'à l'appeler avec son Component et ses props.
  *
+ * Une fois le mount terminé, le composant est exposé sur son hôte via
+ * mountPoint._owlComponent, et si le composant définit _attachToHost(host),
+ * cette méthode est appelée pour publier ses API impératives sur le conteneur
+ * (ex: le widget one2many expose getLines()/applyLineUpdates() -- consommés
+ * par form_serializer/form_controller).
+ *
  * @param {typeof owl.Component} Component
  * @param {Object} options
  * @param {string} options.name - nom du champ (pour data-owl-field et les logs)
  * @param {string} options.fieldTypeClass - ex: "char", "text", "boolean"
  *   -> classe CSS `o_field_<fieldTypeClass>_mount` sur le conteneur
  * @param {Object} options.props - props passées telles quelles au Component
+ * @param {Object} [options.attributes] - attributs supplémentaires posés sur
+ *   le conteneur (ex: "data-o2m-root" pour le widget one2many)
  * @returns {HTMLElement} le conteneur, à insérer immédiatement dans le DOM
  */
-export function renderOwlField(Component, { name, fieldTypeClass, props }) {
+export function renderOwlField(Component, { name, fieldTypeClass, props, attributes = {} }) {
   const mountPoint = document.createElement("span");
   mountPoint.className = `o_owl_mount o_field_${fieldTypeClass}_mount`;
   mountPoint.setAttribute("data-owl-field", name);
+  for (const [attr, value] of Object.entries(attributes)) {
+    mountPoint.setAttribute(attr, value);
+  }
 
-  mountOwlApp(Component, mountPoint, props).catch((err) => {
-    console.error(
-      `[field_bridge] échec du mount OWL pour "${name}" (${fieldTypeClass}) :`,
-      err
-    );
-  });
+  mountOwlApp(Component, mountPoint, props)
+    .then(({ component }) => {
+      mountPoint._owlComponent = component;
+      if (typeof component._attachToHost === "function") {
+        component._attachToHost(mountPoint);
+      }
+    })
+    .catch((err) => {
+      console.error(
+        `[field_bridge] échec du mount OWL pour "${name}" (${fieldTypeClass}) :`,
+        err
+      );
+    });
 
   return mountPoint;
 }

@@ -14,7 +14,7 @@ import { getSecurityInfo } from "../../core/user_service.js";
 import { renderFormView } from "./form_renderer.js";
 import { attachLiveBusinessRules } from "./dynamic_field_attrs.js";
 import { runDocumentRules, validateDocument, computeStockEffects, computeOptimisticStateUpdate } from "../../model/rules_engine/rules_engine.js";
-import { collectFormData, buildDocumentGraph, applyDocumentGraphToDom, applyLineRowToDom } from "./form_serializer.js";
+import { collectFormData, buildDocumentGraph, applyDocumentGraphToDom } from "./form_serializer.js";
 import { addLedgerDelta, getAggregatedDeltasByField } from "../../core/local_ledger.js";
 import { patchCachedRecord } from "../../core/record_cache.js";
 import { router } from "../../core/browser/router_service.js";
@@ -203,13 +203,14 @@ export async function mountFormController(container, params, env) {
 
         applyDocumentGraphToDom(container, fieldsInfo, updatedGraph);
 
+        // Les lignes one2many sont mises à jour via l'API du composant OWL
+        // du widget (voir fields/one2many/one2many_field.js) -- l'état
+        // réactif ré-affiche les cellules, plus aucun mapping tr <-> row.
         for (const [fieldName, { rows }] of Object.entries(updatedGraph.lines || {})) {
           const fieldWrapper = container.querySelector(`[data-one2many="${fieldName}"] [data-o2m-root="true"]`);
-          if (!fieldWrapper || !fieldWrapper._getTbody) continue;
-          const trs = Array.from(fieldWrapper._getTbody().querySelectorAll("tr")).filter((tr) => tr._cellRefs);
-          trs.forEach((tr, idx) => {
-            if (rows[idx]) applyLineRowToDom(tr, rows[idx]);
-          });
+          if (fieldWrapper && fieldWrapper._owlOne2many) {
+            fieldWrapper.applyLineUpdates(rows);
+          }
         }
       } catch (err) {
         console.warn("[form_controller] Échec de l'exécution des règles document:", err);
@@ -233,21 +234,21 @@ export async function mountFormController(container, params, env) {
       if (info.type !== "one2many" || !info.relation) continue;
 
       const fieldWrapper = currentContainer.querySelector(`[data-one2many="${fieldName}"] [data-o2m-root="true"]`);
-      if (!fieldWrapper || !fieldWrapper._getTbody) continue;
+      if (!fieldWrapper || !fieldWrapper._owlOne2many) continue;
 
-      const trs = Array.from(fieldWrapper._getTbody().querySelectorAll("tr")).filter((tr) => tr._cellRefs && tr._recordId);
-      for (const tr of trs) {
+      // Deltas du ledger local appliqués via l'API du composant OWL
+      // (état réactif) -- ex: qty_received/qty_delivered après validation
+      // d'un bon hors-ligne. Générique : fonctionne pour n'importe quel
+      // champ ajusté par une règle "stock_effect" (voir rules/stock_rules.js).
+      for (const lineId of fieldWrapper.getLineIds()) {
         let deltas;
         try {
-          deltas = await getAggregatedDeltasByField(info.relation, String(tr._recordId));
+          deltas = await getAggregatedDeltasByField(info.relation, String(lineId));
         } catch (err) {
           continue; // pas de ledger pour cette ligne -- rien à ajuster
         }
-        for (const [field, delta] of Object.entries(deltas)) {
-          const ref = tr._cellRefs[field];
-          if (!ref || ref.el === document.activeElement) continue;
-          const base = parseFloat(ref.el.value) || 0;
-          ref.el.value = (base + delta).toFixed(2);
+        if (deltas && Object.keys(deltas).length > 0) {
+          fieldWrapper.adjustLineFields(lineId, deltas);
         }
       }
     }

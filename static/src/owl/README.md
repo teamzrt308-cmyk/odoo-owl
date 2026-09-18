@@ -100,13 +100,21 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
 - ✅ Widgets de champ simples, tous via `owl/field_bridge.js`
   (`renderOwlField`, template inline `owl.xml`) : `char`, `text`,
   `integer`, `float`, `boolean`, `selection`, `date`, `datetime`,
-  `monetary` — soit 9 des 12 types du registre de `views/fields/field.js`.
+  `monetary` -- 9 des 12 types du registre de `views/fields/field.js`.
+- ✅ `many2one` et `many2many_tags` : composants OWL (recherche +
+  dropdown sur le cache de référence local, création locale via la file
+  de sync) ; contrat DOM du sérialiseur conservé (input caché).
+- ✅ `one2many` : composant OWL avec état réactif des lignes, cellules
+  rendues par SOUS-COMPOSANTS OWL (les widgets ci-dessus embarqués via
+  `static components`), total réactif (remplace compute_engine.js,
+  supprimé), catalogue produits en overlay, API impératives publiées
+  sur l'hôte (`getLines()`/`applyLineUpdates()`/`adjustLineFields()`)
+  consommées par form_serializer/form_controller -- plus aucun scraping
+  DOM des lignes (tr._cellRefs/_getTbody supprimés).
 - ✅ `views/kanban/kanban_renderer.js` : vue kanban rendue par un
   composant OWL dont le template est COMPILÉ depuis l'arch à chaque
-  mount (`kanban_arch_parser.js`) -- même flux que le webclient natif
-  (arch -> template QWeb/OWL -> composant). Montage async géré par
-  `list_controller.js` (jeton anti-course + destroy propre).
-- ⏳ Reste : `many2one`, `many2many_tags`, `one2many` (logique de
-  dropdown/catalogue plus lourde), puis le renderer form (arch ->
-  template OWL) et enfin les contrôleurs.
+  mount (`kanban_arch_parser.js`) -- même flux que le webclient natif.
+- ⏳ Reste : le renderer form (arch -> template OWL) puis les
+  contrôleurs.
+
 

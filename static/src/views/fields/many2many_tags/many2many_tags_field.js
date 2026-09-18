@@ -1,126 +1,149 @@
 /**
  * views/fields/many2many_tags/many2many_tags_field.js
+ * Widget de champ Many2many (tags) rendu par OWL (recherche + dropdown +
+ * badges supprimables), via owl/field_bridge.js.
+ *
+ * Contrat DOM conservé pour le sérialiseur (form_serializer.js) : un
+ * input caché name="<name>" portant la liste des ids en JSON
+ * (collectFormData et getElementValue lisent ce champ).
+ *
+ * Classe exportée pour embarquement en sous-composant OWL du renderer
+ * one2many -- callback onChange(ids).
  */
 
+import { renderOwlField } from "../../../owl/field_bridge.js";
 import { getReferenceRecords } from "../../../core/reference_cache.js";
 
-export function renderMany2manyTagsField(name, info, node, initialValue) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "o_field_many2many_tags position-relative";
-  wrapper.style.cssText = "display:flex; gap:4px; flex-wrap:wrap; align-items:center; padding:4px 0;";
+export class Many2manyTagsFieldOwl extends owl.Component {
+  static template = owl.xml`
+    <div class="o_field_many2many_tags position-relative" t-ref="root"
+         style="display:flex; gap:4px; flex-wrap:wrap; align-items:center; padding:4px 0;">
+      <div style="display:flex; gap:4px; flex-wrap:wrap;">
+        <span t-foreach="state.selected" t-as="tag" t-key="tag[0]"
+              class="badge rounded-pill text-bg-secondary d-flex align-items-center gap-1">
+          <span t-esc="tag[1]"/>
+          <a href="#" class="text-white" t-on-click="(ev) => this.removeTag(ev, tag[0])">&amp;times;</a>
+        </span>
+      </div>
+      <div style="position:relative; min-width:80px; flex-grow:1;">
+        <input type="text"
+               class="o_input border-0"
+               style="min-width:80px; width:100%;"
+               t-att-id="props.id"
+               placeholder="Rechercher..."
+               autocomplete="off"
+               t-on-input="onSearch"
+        />
+        <ul t-if="state.open and state.matches.length > 0" class="dropdown-menu show"
+            style="display:block; position:absolute; top:100%; left:0; min-width:180px; z-index:1000;">
+          <li t-foreach="state.matches" t-as="rec" t-key="rec.id">
+            <a href="#" class="dropdown-item" t-on-click="(ev) => this.addTag(ev, rec)" t-esc="rec.display_name"/>
+          </li>
+        </ul>
+      </div>
+      <input type="hidden" t-ref="hidden" t-att-name="props.name" t-att-value="state.hiddenValue"/>
+    </div>
+  `;
 
-  // Internal state: list of currently selected [id, display_name] pairs.
-  let selected = Array.isArray(initialValue)
-    ? initialValue.map((v) => (Array.isArray(v) ? v : [v, String(v)]))
-    : [];
+  static props = {
+    id: { type: String, optional: true },
+    name: String,
+    relation: String,
+    readonly: { type: Boolean, optional: true },
+    initialValue: { type: Array, optional: true },
+    onChange: { type: Function, optional: true },
+  };
 
-  const tagsContainer = document.createElement("div");
-  tagsContainer.style.cssText = "display:flex; gap:4px; flex-wrap:wrap;";
-  wrapper.appendChild(tagsContainer);
+  setup() {
+    this.hiddenRef = owl.useRef("hidden");
+    this.rootRef = owl.useRef("root");
+    this.records = [];
 
-  const inputWrap = document.createElement("div");
-  inputWrap.style.cssText = "position:relative; min-width:80px; flex-grow:1;";
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "o_input border-0";
-  input.style.cssText = "min-width:80px; width:100%;";
-  input.placeholder = "Rechercher...";
-  input.autocomplete = "off";
-  inputWrap.appendChild(input);
+    owl.useExternalListener(document.body, "click", (ev) => {
+      if (this.rootRef?.el && !this.rootRef.el.contains(ev.target)) this.closeDropdown();
+    });
 
-  const dropdown = document.createElement("ul");
-  dropdown.className = "dropdown-menu show";
-  dropdown.style.cssText = "display:none; position:absolute; top:100%; left:0; min-width:180px; z-index:1000;";
-  inputWrap.appendChild(dropdown);
+    const initial = Array.isArray(this.props.initialValue)
+      ? this.props.initialValue.map((v) => (Array.isArray(v) ? v : [v, String(v)]))
+      : [];
 
-  wrapper.appendChild(inputWrap);
+    this.state = owl.useState({
+      selected: initial,
+      hiddenValue: JSON.stringify(initial.map(([id]) => id)),
+      query: "",
+      open: false,
+      matches: [],
+    });
 
-  let cachedRecords = [];
-  getReferenceRecords(info.relation).then((records) => {
-    cachedRecords = records;
-  }).catch((err) => console.warn(`Relation ${info.relation}:`, err));
-
-  // Synchronized hidden field so that FormData() captures the value.
-  const hiddenInput = document.createElement("input");
-  hiddenInput.type = "hidden";
-  hiddenInput.name = name;
-  wrapper.appendChild(hiddenInput);
-
-  function syncHiddenValue() {
-    hiddenInput.value = JSON.stringify(selected.map(([id]) => id));
-  }
-
-  function renderTags() {
-    tagsContainer.innerHTML = "";
-    selected.forEach(([id, label]) => {
-      const tag = document.createElement("span");
-      tag.className = "badge rounded-pill text-bg-secondary d-flex align-items-center gap-1";
-      const text = document.createElement("span");
-      text.textContent = label;
-      tag.appendChild(text);
-
-      const removeBtn = document.createElement("a");
-      removeBtn.href = "#";
-      removeBtn.className = "text-white";
-      removeBtn.innerHTML = "&times;";
-      removeBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        selected = selected.filter(([sid]) => sid !== id);
-        renderTags();
-        syncHiddenValue();
+    owl.onWillStart(async () => {
+      try {
+        this.records = await getReferenceRecords(this.props.relation);
+      } catch (err) {
+        console.warn(`Relation ${this.props.relation} :`, err);
+      }
+      // Résolution des libellés des ids nus (les données sauvegardées
+      // contiennent [id] sans tuple) : le tag affiche le display_name du
+      // cache de référence au lieu de l'id brut.
+      this.state.selected = this.state.selected.map(([id, label]) => {
+        if (String(label) === String(id) && this.records.length > 0) {
+          const found = this.records.find((r) => String(r.id) === String(id));
+          return [id, found ? found.display_name : label];
+        }
+        return [id, label];
       });
-      tag.appendChild(removeBtn);
-
-      tagsContainer.appendChild(tag);
     });
   }
 
-  function closeDropdown() {
-    dropdown.style.display = "none";
-    dropdown.innerHTML = "";
+  syncHiddenValue() {
+    this.state.hiddenValue = JSON.stringify(this.state.selected.map(([id]) => id));
+    if (this.props.onChange) this.props.onChange(this.state.selected.map(([id]) => id));
   }
 
-  input.addEventListener("input", () => {
-    const query = input.value.toLowerCase();
-    dropdown.innerHTML = "";
+  closeDropdown() {
+    this.state.open = false;
+    this.state.matches = [];
+  }
+
+  onSearch(ev) {
+    if (this.props.readonly) return;
+    const query = ev.target.value.toLowerCase();
+    this.state.query = query;
 
     if (!query) {
-      closeDropdown();
+      this.closeDropdown();
       return;
     }
 
-    const selectedIds = new Set(selected.map(([sid]) => sid));
-    const matches = cachedRecords
+    const selectedIds = new Set(this.state.selected.map(([id]) => id));
+    this.state.matches = this.records
       .filter((r) => !selectedIds.has(r.id) && r.display_name.toLowerCase().includes(query))
       .slice(0, 20);
+    this.state.open = true;
+  }
 
-    matches.forEach((record) => {
-      const li = document.createElement("li");
-      const a = document.createElement("a");
-      a.className = "dropdown-item";
-      a.href = "#";
-      a.textContent = record.display_name;
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        selected.push([record.id, record.display_name]);
-        renderTags();
-        syncHiddenValue();
-        input.value = "";
-        closeDropdown();
-      });
-      li.appendChild(a);
-      dropdown.appendChild(li);
-    });
+  addTag(ev, record) {
+    ev.preventDefault();
+    this.state.selected.push([record.id, record.display_name]);
+    this.syncHiddenValue();
+    this.closeDropdown();
+  }
 
-    dropdown.style.display = matches.length > 0 ? "block" : "none";
+  removeTag(ev, id) {
+    ev.preventDefault();
+    this.state.selected = this.state.selected.filter(([sid]) => sid !== id);
+    this.syncHiddenValue();
+  }
+}
+
+export function renderMany2manyTagsField(name, info, node, initialValue, initialValues) {
+  return renderOwlField(Many2manyTagsFieldOwl, {
+    name,
+    fieldTypeClass: "many2many_tags",
+    props: {
+      id: `field-${name}`,
+      name,
+      relation: info.relation,
+      initialValue: Array.isArray(initialValue) ? initialValue : [],
+    },
   });
-
-  document.addEventListener("click", (e) => {
-    if (!wrapper.contains(e.target)) closeDropdown();
-  });
-
-  renderTags();
-  syncHiddenValue();
-
-  return wrapper;
 }
