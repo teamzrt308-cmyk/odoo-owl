@@ -11,7 +11,7 @@ import { getModuleManifest, resolveModelViews } from "../view_service.js";
 import { getListRecordsSmart, getPurchaseDashboardSmart } from "../../core/list_cache.js";
 import { formatCellValue } from "./list_renderer_utils.js";
 import { renderListView } from "./list_renderer.js";
-import { renderKanbanView } from "../kanban/kanban_renderer.js";
+import { mountKanbanView } from "../kanban/kanban_renderer.js";
 import { renderPurchaseDashboard, buildPurchaseDashboardDomain } from "../purchase_dashboard.js";
 import { buildControlPanel, renderViewSwitcherButtons } from "../../search/control_panel/control_panel.js";
 import { filterByRecordRule } from "../../model/rules_engine/rules_engine.js";
@@ -144,10 +144,17 @@ export async function mountListController(container, params, env) {
     cp.pagerNextBtn.disabled = start + PAGE_SIZE >= total;
   }
 
-  function renderCurrentPage() {
+  // Jeton anti-course : les changements de page/vue rapides pendant un
+  // mount OWL asynchrone (kanban) ne doivent pas laisser deux vues vivres.
+  let renderToken = 0;
+
+  async function renderCurrentPage() {
+    const token = ++renderToken;
+
     if (listContainer._currentView?._cleanup) {
       listContainer._currentView._cleanup();
     }
+    listContainer._currentView = null;
     listContainer.innerHTML = "";
 
     const start = currentPage * PAGE_SIZE;
@@ -160,13 +167,38 @@ export async function mountListController(container, params, env) {
       });
     };
 
-    const viewEl =
-      currentView === "kanban"
-        ? renderKanbanView(currentModelViews.kanban.arch, currentViewFieldsInfo, pageRecords, onRecordOpen)
-        : renderListView(currentModelViews.list.arch, currentViewFieldsInfo, pageRecords, onRecordOpen, model);
+    if (currentView === "kanban") {
+      // La kanban est rendue par OWL (voir kanban_renderer.js) : le
+      // renderer est un composant OWL dont le template est compilé
+      // depuis l'arch par kanban_arch_parser.js -- même flux que le
+      // webclient d'Odoo (arch -> template -> composant OWL).
+      const kanbanTarget = document.createElement("div");
+      listContainer.appendChild(kanbanTarget);
+      try {
+        const { destroy } = await mountKanbanView(
+          kanbanTarget,
+          currentModelViews.kanban.arch,
+          currentViewFieldsInfo,
+          pageRecords,
+          onRecordOpen
+        );
+        if (token !== renderToken) {
+          destroy(); // la page a de nouveau changé pendant le mount -> on jette le rendu
+          return;
+        }
+        listContainer._currentView = { _cleanup: destroy };
+      } catch (err) {
+        console.warn("[list_controller] Échec du rendu kanban :", err);
+        kanbanTarget.textContent = "Impossible d'afficher la vue kanban.";
+      }
+    } else {
+      const viewEl = renderListView(
+        currentModelViews.list.arch, currentViewFieldsInfo, pageRecords, onRecordOpen, model
+      );
+      listContainer._currentView = viewEl;
+      listContainer.appendChild(viewEl);
+    }
 
-    listContainer._currentView = viewEl;
-    listContainer.appendChild(viewEl);
     updatePagerDisplay();
   }
 

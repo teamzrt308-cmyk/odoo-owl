@@ -1,14 +1,31 @@
 /**
  * views/kanban/kanban_renderer.js
- * Rendu de la vue Kanban : construit la grille de cartes à partir des
- * enregistrements et du template <t t-name="kanban-box">, en délégant
- * la compilation/interprétation du template à kanban_compiler.js
- * (moteur QWeb minimal : t-if, t-esc, t-out, t-attf-class, t-set...).
+ * ===============================
+ * Rendu de la vue Kanban par OWL -- même architecture qu'Odoo : le
+ * renderer est un composant OWL dont le TEMPLATE est issu de l'arch
+ * (compilée par kanban_arch_parser.js, comme le vrai webclient compile
+ * l'arch en templates QWeb/OWL pour KanbanRecord).
+ *
+ * Chaque carte est rendue dans le scope du template avec :
+ *   - `record` : proxy { <champ>: { raw_value, value } } (même forme que
+ *     l'ancien moteur et que les templates kanban Odoo) ;
+ *   - les variables posées par t-set dans l'arch ;
+ *   - `selection_mode` (false), variable historique du scope kanban.
+ *
+ * Le mount est asynchrone (montage OWL) et retourne un handle
+ * { destroy } -- même contrat que les contrôleurs de vues du moteur
+ * hors ligne (voir list_controller.js, consommateur de ce renderer).
  */
 
+import { mountOwlApp } from "../../owl/app.js";
 import { formatCellValue } from "../list/list_renderer_utils.js";
-import { renderKanbanNode } from "./kanban_compiler.js";
+import { parseKanbanArch } from "./kanban_arch_parser.js";
 
+/**
+ * Construit le proxy record consommé par les expressions du template
+ * (record.x.value / record.x.raw_value), comme buildKanbanRecordProxy
+ * de l'ancien moteur et comme les templates kanban natifs d'Odoo.
+ */
 function buildKanbanRecordProxy(record, fieldsInfo) {
   const proxy = {};
   for (const [fname, info] of Object.entries(fieldsInfo)) {
@@ -24,54 +41,60 @@ function buildKanbanRecordProxy(record, fieldsInfo) {
   return proxy;
 }
 
-const KANBAN_GLOBAL_DEFAULTS = {
-  selection_mode: false,
-};
+export class KanbanRenderer extends owl.Component {
+  static props = {
+    records: { type: Array },
+    fieldsInfo: { type: Object },
+    onCardClick: { type: Function },
+  };
 
-export function renderKanbanView(archXml, fieldsInfo, records, onCardClick) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(archXml, "text/xml");
+  setup() {
+    // Variables de scope historiques du moteur kanban (ex: les archs
+    // contenant t-if="!selection_mode" continuent de fonctionner).
+    this.selection_mode = false;
+  }
+}
 
-  const kanbanRoot = doc.querySelector("kanban");
-  const templateNode = doc.querySelector('templates > t[t-name="kanban-box"]');
+/**
+ * Mounts the OWL kanban renderer into `target` for the given arch.
+ * @param {HTMLElement} target - conteneur déjà inséré dans le DOM
+ * @param {string} archXml - arch XML brute de la vue kanban
+ * @param {Object} fieldsInfo - métadonnées des champs du modèle
+ * @param {Array} records - enregistrements bruts de la page courante
+ * @param {Function} onCardClick - callback(recordId)
+ * @returns {Promise<{ destroy: Function }>}
+ */
+export async function mountKanbanView(target, archXml, fieldsInfo, records, onCardClick) {
+  const parsed = parseKanbanArch(archXml);
 
-  const wrapper = document.createElement("div");
-  wrapper.className = "o_kanban_view o_kanban_ungrouped";
-
-  if (!kanbanRoot || !templateNode) {
-    wrapper.textContent = "Vue Kanban non disponible pour ce modèle.";
-    return wrapper;
+  if (parsed.error) {
+    console.warn("[kanban_renderer]", parsed.error);
+    const errDiv = document.createElement("div");
+    errDiv.className = "o_kanban_view text-muted p-3";
+    errDiv.textContent = `Vue Kanban non disponible pour ce modèle. (${parsed.error})`;
+    target.appendChild(errDiv);
+    return { destroy() {} };
   }
 
-  if (!records || records.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "o_kanban_renderer o_kanban_no_records text-muted p-4 text-center";
-    empty.textContent = "Aucun enregistrement.";
-    wrapper.appendChild(empty);
-    return wrapper;
-  }
+  const recordProxies = (records || []).map((rawRecord) =>
+    buildKanbanRecordProxy(rawRecord, fieldsInfo)
+  );
 
-  const renderer = document.createElement("div");
-  renderer.className = "o_kanban_renderer o_kanban_grouped d-flex flex-wrap gap-3 p-3";
-  wrapper.appendChild(renderer);
+  // Le template du renderer dépend de l'arch : il est injecté dans
+  // l'App OWL au mount -- même principe que le chargement des templates
+  // qweb par le webclient d'Odoo avant le rendu d'une vue.
+  KanbanRenderer.template = parsed.templateName;
 
-  records.forEach((rawRecord) => {
-    const recordProxy = buildKanbanRecordProxy(rawRecord, fieldsInfo);
-    const scope = { ...KANBAN_GLOBAL_DEFAULTS };
+  const { destroy } = await mountOwlApp(
+    KanbanRenderer,
+    target,
+    {
+      records: recordProxies,
+      fieldsInfo,
+      onCardClick,
+    },
+    { [parsed.templateName]: parsed.templateXml }
+  );
 
-    const cardWrapper = document.createElement("div");
-    cardWrapper.className = "o_kanban_record";
-    cardWrapper.style.width = "300px";
-    cardWrapper.style.cursor = "pointer";
-
-    for (const child of Array.from(templateNode.childNodes)) {
-      const rendered = renderKanbanNode(child, recordProxy, fieldsInfo, scope);
-      if (rendered) cardWrapper.appendChild(rendered);
-    }
-
-    cardWrapper.addEventListener("click", () => onCardClick(rawRecord.id));
-    renderer.appendChild(cardWrapper);
-  });
-
-  return wrapper;
+  return { destroy };
 }

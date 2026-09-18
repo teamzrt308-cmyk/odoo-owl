@@ -19,11 +19,42 @@ via une API JSON authentifiée par clé API.
    `#action-container`, gère la pile de breadcrumb et synchronise l'URL via `router.pushState`/`replaceState`. Garde d'authentification intégrée (redirige vers `"login"` si pas de clé API).
 
 4. ## views/view.js 
-   dispatche vers `list_controller.js` ou
-   `form_controller.js` selon la présence d'un `id`/`isNew`.
+   dispatcher de vues, calqué sur le flux d'Odoo : résolution du TYPE de
+   vue (`params.view`, sinon `form` si `id`/`isNew`, sinon `list`) puis
+   montage du descripteur correspondant de `registry.category("views")`
+   (enregistrés par `views/form/form_view.js`, `views/list/list_view.js`,
+   `views/kanban/kanban_view.js` — même mécanisme que le webclient
+   natif). Les tags `list_view`/`form_view`/`ir.actions.act_window` du
+   registre "actions" ne sont que des entrées de compatibilité avec
+   l'ActionService hors ligne.
 
-5. ## Communication interne : 
+5. ## Rendu OWL
+   La vue kanban est rendue par un composant OWL
+   (`views/kanban/kanban_renderer.js`) dont le template est COMPILÉ
+   depuis l'arch par `views/kanban/kanban_arch_parser.js` — le même
+   mécanisme que le vrai webclient (arch -> template QWeb/OWL ->
+   composant). Les champs migrent progressivement via
+   `owl/field_bridge.js` (`char_field.js` déjà migré).
+
+6. ## Communication interne : 
    `core/bus/bus_service.js` (EventBus)
+
+# Correspondance avec la structure d'Odoo (web/static/src/)
+
+| Odoo 17 | Ce projet | Note |
+|---|---|---|
+| `core/` (registry, py_js, orm_service, user_service, browser/, bus/, dropdown/, notebook/, network/) | identique | ✔ aligné |
+| `views/view.js` + registre "views" | identique | descripteurs form/list/kanban |
+| `views/form/form_arch_parser.js` | identique | arch -> structure, sans DOM |
+| `views/form/{form_controller,form_renderer}.js`, `button_box/` | identique | |
+| `views/fields/<type>/` (char, many2one, one2many, statusbar...) | identique | x2many -> `one2many/` |
+| `views/kanban/{kanban_arch_parser,kanban_renderer}.js` | identique | renderer OWL (pilote) |
+| `webclient/{actions,navbar,user_menu,breadcrumb}/` | identique | breadcrumb extrait du control panel |
+| `search/control_panel/`, `views/view_service.js` | identique | |
+| `model/` | `model/rules_engine/` | couche modèle hors ligne (règles métier) |
+| — (spécifique) | `core/*_cache.js`, `core/local_ledger.js`, `core/catalog_cache.js`, `core/reference_cache.js` | caches IndexedDB hors ligne |
+| — (spécifique) | `core/network/rpc_service.js` | file de sync + push (`/offline_sync/*`) |
+| — (spécifique) | `webclient/offline_prefetch_service.js`, `login/`, `conflict_detail/` | téléchargement hors ligne, auth par clé API, arbitrage de conflits |
 
 # Odoo
 

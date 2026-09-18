@@ -100,3 +100,15 @@ validateType, whenReady, xml.
 Une fois cette base validée en navigateur : choisir UN composant pilote
 réel à migrer (proposition : un champ simple comme `char_field.js`,
 le plus petit périmètre testable) avant d'attaquer form/list/kanban.
+
+## État des migrations OWL (mise à jour)
+
+- ✅ `views/fields/char/char_field.js` : widget de champ OWL via
+  `owl/field_bridge.js` (`renderOwlField`), template inline `owl.xml`.
+- ✅ `views/kanban/kanban_renderer.js` : vue kanban rendue par un
+  composant OWL dont le template est COMPILÉ depuis l'arch à chaque
+  mount (`kanban_arch_parser.js`) -- même flux que le webclient natif
+  (arch -> template QWeb/OWL -> composant). Montage async géré par
+  `list_controller.js` (jeton anti-course + destroy propre).
+- ⏳ Reste : autres widgets de champ (via field_bridge), puis les
+  renderers/contrôleurs form et liste.
