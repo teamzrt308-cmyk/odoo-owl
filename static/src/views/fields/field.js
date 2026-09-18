@@ -35,15 +35,23 @@ const SUPPORTED_FIELD_WIDGETS = {
   many2many: renderMany2manyTagsField,
 };
 
+/**
+ * Indique si le moteur sait rendre ce type de champ (utilisé par la
+ * compilation de l'arch form : un champ non supporté n'emporte pas
+ * d'emplacement, comme l'ancien renderField() qui retournait null).
+ */
+export function canRenderField(info) {
+  return !!info && !!SUPPORTED_FIELD_WIDGETS[info.type];
+}
+
 export function renderField(node, fieldsInfo, initialValues, securityContext, hasRecordId) {
   const fieldName = node.getAttribute("name");
   if (!fieldName) return null;
 
   const info = fieldsInfo[fieldName];
-  if (!info) return null;
+  if (!canRenderField(info)) return null;
 
   const renderer = SUPPORTED_FIELD_WIDGETS[info.type];
-  if (!renderer) return null;
 
   const cell = document.createElement("div");
   cell.className = "o_row d-flex";

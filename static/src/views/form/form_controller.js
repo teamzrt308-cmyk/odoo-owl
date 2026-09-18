@@ -11,7 +11,7 @@ import { getModuleManifest, resolveModelViews } from "../view_service.js";
 import { getReferenceRecordsSmart } from "../../core/reference_cache.js";
 import { getRecordSmart } from "../../core/record_cache.js";
 import { getSecurityInfo } from "../../core/user_service.js";
-import { renderFormView } from "./form_renderer.js";
+import { mountFormRenderer } from "./form_renderer.js";
 import { attachLiveBusinessRules } from "./dynamic_field_attrs.js";
 import { runDocumentRules, validateDocument, computeStockEffects, computeOptimisticStateUpdate } from "../../model/rules_engine/rules_engine.js";
 import { collectFormData, buildDocumentGraph, applyDocumentGraphToDom } from "./form_serializer.js";
@@ -49,6 +49,7 @@ export async function mountFormController(container, params, env) {
   let currentContainer = null;
   let currentFieldsInfo = null;
   let cleanupRules = () => {};
+  let rendererDestroy = null;
   let rulesSyncTimer = null;
 
   // NEW — promoted to closure variables (previously: local to the try
@@ -80,6 +81,55 @@ export async function mountFormController(container, params, env) {
   statusEl.className = "text-muted small px-3 py-1";
   statusEl.textContent = "Chargement du formulaire...";
   container.appendChild(statusEl);
+
+  /**
+   * Monte (ou re-monte) le renderer OWL du formulaire -- même rôle que
+   * les trois anciens blocs renderFormView() + replaceWith() (mount
+   * initial, refresh après write, rebuild optimiste), désormais
+   * factorisés. L'app OWL précédente est détruite avant le re-mount.
+   * Le renderer reçoit un template compilé depuis l'arch
+   * (form_arch_parser.js) et remplit lui-même les widgets de champ ;
+   * `ready` garantit que toutes les saisies existent avant la première
+   * passe de règles document.
+   */
+  async function mountFormInto(values, { insertBeforeStatus = false } = {}) {
+    cleanupRules();
+    if (rendererDestroy) {
+      try {
+        rendererDestroy();
+      } catch (err) {
+        console.warn("[form_controller] destroy renderer:", err);
+      }
+      rendererDestroy = null;
+    }
+
+    const host = document.createElement("div");
+    if (insertBeforeStatus || !currentContainer) {
+      container.insertBefore(host, statusEl);
+    } else {
+      currentContainer.replaceWith(host);
+    }
+
+    const { el, ready, destroy } = await mountFormRenderer(
+      host,
+      archXml,
+      currentFieldsInfo,
+      values,
+      currentSecurityContext,
+      onObjectButtonClick
+    );
+    rendererDestroy = destroy;
+    currentContainer = host;
+    el.dataset.model = model;
+
+    cleanupRules = attachLiveBusinessRules(archXml, el, currentFieldsInfo);
+    el.addEventListener("input", scheduleDocumentRulesSync);
+    el.addEventListener("change", scheduleDocumentRulesSync);
+    await ready; // toutes les saisies existent avant la 1re passe de règles
+    scheduleDocumentRulesSync(); // premier passage (ex: amount_total sur un nouveau document)
+    applyLedgerAdjustmentsToForm(); // ex: qty_received déjà ajustée par une réception validée hors-ligne
+    return el;
+  }
 
   try {
     const manifest = await getModuleManifest(module, apiKey, CONFIG.ODOO_BASE_URL);
@@ -121,17 +171,8 @@ export async function mountFormController(container, params, env) {
     const securityInfo = await getSecurityInfo(model);
     currentSecurityContext = securityInfo || { is_admin: false };
 
-    const formEl = renderFormView(archXml, fieldsInfo, initialValues, currentSecurityContext, onObjectButtonClick);
-    formEl.dataset.model = model;
-    container.insertBefore(formEl, statusEl);
-    cleanupRules = attachLiveBusinessRules(archXml, formEl, fieldsInfo);
-    formEl.addEventListener("input", scheduleDocumentRulesSync);
-    formEl.addEventListener("change", scheduleDocumentRulesSync);
-    scheduleDocumentRulesSync(); // premier passage (ex: amount_total sur un nouveau document)
-    applyLedgerAdjustmentsToForm(); // ex: qty_received déjà ajustée par une réception validée hors-ligne
-
-    currentContainer = formEl;
     currentFieldsInfo = fieldsInfo;
+    await mountFormInto(initialValues, { insertBeforeStatus: true });
 
     cp.cloudBtn.addEventListener("click", saveRecord);
     cp.undoBtn.addEventListener("click", () => {
@@ -167,17 +208,7 @@ export async function mountFormController(container, params, env) {
     const { __reference_write_date__, ...cleanValues } = freshRecord;
     currentReferenceValues = cleanValues;
 
-    const newFormEl = renderFormView(archXml, currentFieldsInfo, freshRecord, currentSecurityContext, onObjectButtonClick);
-    newFormEl.dataset.model = model;
-
-    cleanupRules();
-    currentContainer.replaceWith(newFormEl);
-    currentContainer = newFormEl;
-    cleanupRules = attachLiveBusinessRules(archXml, newFormEl, currentFieldsInfo);
-    newFormEl.addEventListener("input", scheduleDocumentRulesSync);
-    newFormEl.addEventListener("change", scheduleDocumentRulesSync);
-    scheduleDocumentRulesSync();
-    applyLedgerAdjustmentsToForm();
+    await mountFormInto(freshRecord);
 
     cp.breadcrumbCurrent.textContent = freshRecord.name || `#${currentRecordId}`;
   }
@@ -284,17 +315,8 @@ export async function mountFormController(container, params, env) {
     await patchCachedRecord(model, currentRecordId, currentReferenceValues);
 
     const patchedRecord = { ...currentReferenceValues, id: currentRecordId };
-    const newFormEl = renderFormView(archXml, currentFieldsInfo, patchedRecord, currentSecurityContext, onObjectButtonClick);
-    newFormEl.dataset.model = model;
 
-    cleanupRules();
-    currentContainer.replaceWith(newFormEl);
-    currentContainer = newFormEl;
-    cleanupRules = attachLiveBusinessRules(archXml, newFormEl, currentFieldsInfo);
-    newFormEl.addEventListener("input", scheduleDocumentRulesSync);
-    newFormEl.addEventListener("change", scheduleDocumentRulesSync);
-    scheduleDocumentRulesSync();
-    applyLedgerAdjustmentsToForm();
+    await mountFormInto(patchedRecord);
   }
 
   /**
@@ -473,5 +495,6 @@ export async function mountFormController(container, params, env) {
   return () => {
     clearTimeout(rulesSyncTimer);
     cleanupRules();
+    if (rendererDestroy) rendererDestroy();
   };
 }

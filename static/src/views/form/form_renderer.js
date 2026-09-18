@@ -1,96 +1,202 @@
 /**
  * views/form/form_renderer.js
- * Builds the DOM skeleton of the Odoo form (o_form_view, o_form_sheet_bg,
- * statusbar, chatter stub) from the arch PRE-parsed by form_arch_parser.js
- * (same parser/renderer responsibility split as in Odoo), then delegates
- * the recursive compilation of the architecture to form_compiler.js.
+ * ===========================
+ * Rendu de la vue formulaire par OWL -- même architecture qu'Odoo 17 :
+ * le renderer est un composant OWL dont le TEMPLATE est COMPILÉ depuis
+ * l'arch (form_arch_parser.js::buildFormTemplate, comme le webclient
+ * natif compile l'arch en template QWeb/OWL). Le scaffolding (sheet_bg,
+ * header/statusbar, sheet, chatter) et la structure (groups, notebook,
+ * labels, h1, button box) vivent dans le template ; les onglets du
+ * notebook sont réactifs (state.activePage).
+ *
+ * Spécificité hors ligne : les widgets de champ restent montés par
+ * owl/field_bridge.js (contrat DOM du sérialiseur : #field-<name>,
+ * inputs cachés, data-one2many + API impératives). Après le render,
+ * FormRenderer remplit les emplacements data-form-slot du template avec
+ * les cellules produites par views/fields/field.js::renderField, puis
+ * expose `ready` (promesse) résolue quand toutes les saisies existent.
  */
 
-import { renderChildren } from "./form_compiler.js";
-import { parseFormViewArch } from "./form_arch_parser.js";
+import { mountOwlApp } from "../../owl/app.js";
+import { parseFormViewArch, buildFormTemplate } from "./form_arch_parser.js";
+import { renderField } from "../fields/field.js";
+import { renderStatusbarField } from "../fields/statusbar/statusbar.js";
+
+export class FormRenderer extends owl.Component {
+  static props = {
+    fieldSlots: { type: Array, optional: true },
+    headerButtons: { type: Array, optional: true },
+    fieldsInfo: { type: Object, optional: true },
+    initialValues: { type: Object, optional: true },
+    securityContext: { optional: true },
+    hasRecordId: { type: Boolean, optional: true },
+    onObjectButtonClick: { type: Function, optional: true },
+  };
+
+  setup() {
+    // Onglet actif du notebook (réactif : le template bascule les
+    // classes active des nav-link/tab-pane via t-att-class).
+    this.state = owl.useState({ activePage: 0 });
+    // OWL 2 n'expose pas this.el : la racine du template porte t-ref="root".
+    this.rootRef = owl.useRef("root");
+    // Promesse exposée à mountFormRenderer (voir plus bas).
+    this.ready = Promise.resolve();
+    owl.onMounted(() => {
+      this.ready = this.mountFieldSlots();
+    });
+  }
+
+  /**
+   * Remplit les emplacements data-form-slot avec les cellules de champs
+   * produites par renderField() -- le pont entre le template OWL compilé
+   * et les widgets de champ du moteur (contrat sérialiseur préservé).
+   * Retourne une promesse résolue lorsque TOUS les widgets OWL montés
+   * dans ces emplacements existent (field_bridge._owlReady).
+   */
+  async mountFieldSlots() {
+    const root = this.rootRef.el;
+    const pending = [];
+
+    for (const slot of this.props.fieldSlots || []) {
+      const host = root.querySelector(`[data-form-slot="${slot.index}"]`);
+      if (!host) continue;
+
+      if (slot.kind === "statusbar") {
+        // Widget statusbar (views/fields/statusbar/) -- rendu synchrone.
+        const info = this.props.fieldsInfo[slot.name];
+        const wrapper = renderStatusbarField(
+          slot.name,
+          info,
+          slot.node,
+          (this.props.initialValues || {})[slot.name]
+        );
+        if (wrapper) host.replaceWith(wrapper);
+        continue;
+      }
+
+      const cell = renderField(
+        slot.node,
+        this.props.fieldsInfo,
+        this.props.initialValues,
+        this.props.securityContext,
+        this.props.hasRecordId
+      );
+      if (!cell) {
+        host.remove();
+        continue;
+      }
+
+      if (slot.mode === "widget") {
+        // Paire <label for="x"/> : seuls les enfants du .o_field_widget
+        // entrent dans la cellule de saisie du template.
+        const widget = cell.querySelector(".o_field_widget") || cell;
+        pending.push(...collectOwlReady([widget]));
+        host.replaceWith(...Array.from(widget.childNodes));
+      } else {
+        if (slot.mode === "cell-nolabel") {
+          const label = cell.querySelector(":scope > label");
+          if (label) label.remove();
+        }
+        pending.push(...collectOwlReady([cell]));
+        host.replaceWith(cell);
+      }
+    }
+
+    await Promise.all(pending);
+  }
+
+  onTabClick(ev, index) {
+    ev.preventDefault();
+    this.state.activePage = index;
+  }
+
+  /**
+   * Boutons du <header> : le markup est statique dans le template, la
+   * décision (type="object" branché, sinon message hors-ligne) est ici.
+   */
+  onHeaderButton(index) {
+    const btn = (this.props.headerButtons || [])[index];
+    if (btn && btn.type === "object" && btn.name && typeof this.props.onObjectButtonClick === "function") {
+      this.props.onObjectButtonClick(btn.name);
+    } else {
+      alert("Cette action nécessite une connexion à Odoo — non disponible hors-ligne pour le moment.");
+    }
+  }
+
+  onChatterClick() {
+    alert("Cette action nécessite une connexion à Odoo — non disponible hors-ligne pour le moment.");
+  }
+}
 
 /**
- * NEW param: onObjectButtonClick, forwarded unchanged to renderChildren
- * (see form_compiler.js / core/notebook/notebook.js / form_header.js / button_box/button_box.js).
+ * Collecte les promesses _owlReady des widgets de champ (spans du field
+ * bridge) contenus dans les nœuds insérés.
  */
-export function renderFormView(archXml, fieldsInfo, initialValues = {}, securityContext = null, onObjectButtonClick = null) {
+function collectOwlReady(nodes) {
+  const promises = [];
+  for (const node of nodes) {
+    if (!node.querySelectorAll) continue;
+    if (node.matches && node.matches("[data-owl-field]") && node._owlReady) {
+      promises.push(node._owlReady);
+    }
+    node.querySelectorAll("[data-owl-field]").forEach((span) => {
+      if (span._owlReady) promises.push(span._owlReady);
+    });
+  }
+  return promises;
+}
+
+/**
+ * Monte le renderer OWL dans `target` pour l'arch donnée.
+ * @param {HTMLElement} target - conteneur (déjà inséré dans le DOM)
+ * @param {string} archXml - arch XML brute de la vue form
+ * @param {Object} fieldsInfo - métadonnées des champs du modèle
+ * @param {Object} initialValues - valeurs du record (ou {} en création)
+ * @param {Object|null} securityContext - contexte de sécurité (is_admin…)
+ * @param {Function|null} onObjectButtonClick - callback boutons type="object"
+ * @returns {Promise<{ el: HTMLElement, ready: Promise, destroy: Function }>}
+ *   el : la racine .o_form_view rendue (contrat form_controller),
+ *   ready : promesse résolue quand tous les widgets de champ sont montés.
+ */
+export async function mountFormRenderer(target, archXml, fieldsInfo, initialValues = {}, securityContext = null, onObjectButtonClick = null) {
   const parsed = parseFormViewArch(archXml);
 
   if (parsed.error) {
     console.error("[form_renderer]", parsed.error);
     const errDiv = document.createElement("div");
     errDiv.textContent = "Impossible d'afficher ce formulaire (erreur de structure).";
-    return errDiv;
+    target.appendChild(errDiv);
+    return { el: errDiv, ready: Promise.resolve(), destroy() {} };
   }
 
-  const formRoot = parsed.formRoot;
-
   const hasRecordId = !!(initialValues && initialValues.id);
-  const formView = document.createElement("div");
-  formView.className = "o_form_view";
+  const compiled = buildFormTemplate(parsed.formRoot, {
+    fieldsInfo,
+    initialValues,
+    securityContext,
+    hasRecordId,
+  });
 
-  const contentRow = document.createElement("div");
-  contentRow.className = "o_content";
-  formView.appendChild(contentRow);
+  // Le template du renderer dépend de l'arch : injecté dans l'App OWL au
+  // mount -- même principe que le chargement des templates qweb par le
+  // webclient d'Odoo avant le rendu d'une vue.
+  FormRenderer.template = compiled.templateName;
 
-  const rendererRow = document.createElement("div");
-  rendererRow.className = "o_form_renderer o_form_editable d-flex flex-nowrap h-100";
-  contentRow.appendChild(rendererRow);
+  const { component, destroy } = await mountOwlApp(
+    FormRenderer,
+    target,
+    {
+      fieldSlots: compiled.fieldSlots,
+      headerButtons: compiled.headerButtons,
+      fieldsInfo,
+      initialValues: initialValues || {},
+      securityContext,
+      hasRecordId,
+      onObjectButtonClick,
+    },
+    { [compiled.templateName]: compiled.templateXml }
+  );
 
-  const sheetBg = document.createElement("div");
-  sheetBg.className = "o_form_sheet_bg";
-  rendererRow.appendChild(sheetBg);
-
-  const headerRow = document.createElement("div");
-  headerRow.className =
-    "o_form_statusbar position-relative d-flex justify-content-between mb-0 mb-md-2 pb-2 pb-md-0";
-  sheetBg.appendChild(headerRow);
-
-  const sheet = document.createElement("div");
-  sheet.className = "o_form_sheet position-relative";
-  sheetBg.appendChild(sheet);
-
-  const chatterCol = document.createElement("div");
-  chatterCol.className =
-    "o-mail-ChatterContainer o-mail-Form-chatter oe_chatter o-aside";
-  chatterCol.innerHTML = `
-    <div class="o-mail-Chatter w-100 h-100 flex-grow-1 d-flex flex-column overflow-auto">
-      <div class="o-mail-Chatter-top position-sticky top-0">
-        <div class="o-mail-Chatter-topbar d-flex flex-shrink-0 flex-grow-0 px-3 overflow-x-auto">
-          <button type="button" class="o-mail-Chatter-sendMessage btn text-nowrap me-1 btn-primary my-2">Envoyer un message</button>
-          <button type="button" class="o-mail-Chatter-logNote btn text-nowrap me-1 btn-secondary my-2">Note</button>
-          <div class="flex-grow-1 d-flex">
-            <button type="button" class="o-mail-Chatter-activity btn btn-secondary text-nowrap my-2"><span>Activités</span></button>
-            <span class="o-mail-Chatter-topbarGrow flex-grow-1 pe-2"></span>
-            <button type="button" class="o-mail-Chatter-search btn btn-link text-action" aria-label="Rechercher des messages">
-              <i class="oi oi-search" role="img"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="o-mail-Chatter-content">
-        <div class="o-mail-Thread position-relative flex-grow-1 d-flex flex-column overflow-auto pb-4 text-muted small p-3">
-          Historique non disponible hors-ligne pour l'instant.
-        </div>
-      </div>
-    </div>
-  `;
-  rendererRow.appendChild(chatterCol);
-
-  chatterCol
-    .querySelectorAll(
-      ".o-mail-Chatter-sendMessage, .o-mail-Chatter-logNote, " +
-      ".o-mail-Chatter-activity, .o-mail-Chatter-search"
-    )
-    .forEach((btn) => {
-      btn.addEventListener("click", () => {
-        alert(
-          "Cette action nécessite une connexion à Odoo — non disponible hors-ligne pour le moment."
-        );
-      });
-    });
-
-  renderChildren(formRoot, headerRow, sheet, fieldsInfo, initialValues, securityContext, hasRecordId, onObjectButtonClick);
-
-  return formView;
+  const el = (component.rootRef && component.rootRef.el) || target.firstElementChild;
+  return { el, ready: component.ready, destroy };
 }

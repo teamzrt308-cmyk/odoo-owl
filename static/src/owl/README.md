@@ -111,10 +111,23 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   sur l'hôte (`getLines()`/`applyLineUpdates()`/`adjustLineFields()`)
   consommées par form_serializer/form_controller -- plus aucun scraping
   DOM des lignes (tr._cellRefs/_getTbody supprimés).
+- ✅ `views/form/form_renderer.js` : la vue FORMULAIRE est rendue par un
+  composant OWL dont le template est COMPILÉ depuis l'arch à chaque
+  mount (`form_arch_parser.js::buildFormTemplate` -- même flux que le
+  webclient natif : arch -> template OWL -> composant). Scaffolding
+  (sheet_bg, header/statusbar, sheet, chatter), groups (o_inner_group,
+  colspan/newline), notebook réactif (state.activePage), h1, button_box
+  et labels vivent dans le template ; les widgets de champ restent
+  montés par `owl/field_bridge.js` dans les emplacements `data-form-slot`
+  (contrat DOM du sérialiseur préservé : `#field-<name>`, inputs cachés,
+  `data-one2many` + API impératives). `FormRenderer.ready` garantit que
+  toutes les saisies existent avant la première passe de règles document.
+  Absorbés/supprimés : `form_compiler.js`, `form_group/`,
+  `form_header.js`, `button_box/`, `core/notebook/` (vanilla).
 - ✅ `views/kanban/kanban_renderer.js` : vue kanban rendue par un
   composant OWL dont le template est COMPILÉ depuis l'arch à chaque
   mount (`kanban_arch_parser.js`) -- même flux que le webclient natif.
-- ⏳ Reste : le renderer form (arch -> template OWL) puis les
-  contrôleurs.
+- ⏳ Reste : les contrôleurs (form_controller OWL, même flux que
+  list_controller).
 
 

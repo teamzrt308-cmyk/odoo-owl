@@ -108,19 +108,22 @@ formEl.querySelector("#field-state").dispatchEvent(new dom.window.Event("change"
 ok(!nameInput.disabled, "ré-évaluation live : name déverrouillé quand state=draft");
 cleanupRules();
 
-// --- 6. Notebook sans dépendance inverse ---
-const { renderNotebook } = await import(REPO + "/static/src/core/notebook/notebook.js");
-const nbNode = new dom.window.DOMParser().parseFromString(
-  `<notebook><page string="Onglet 1"></page><page string="Onglet 2"></page></notebook>`, "text/xml"
+// --- 6. Notebook : compilé dans le template form (form_arch_parser) ---
+// Le notebook vanilla (core/notebook/) est supprimé : depuis l'itération 4,
+// le renderer form est un composant OWL dont le template (compilé depuis
+// l'arch) emporte les onglets ; la réactivité vit dans FormRenderer.state.
+const { buildFormTemplate } = await import(REPO + "/static/src/views/form/form_arch_parser.js");
+const nbRoot = new dom.window.DOMParser().parseFromString(
+  `<form><notebook><page string="Onglet 1"><field name="a"/></page><page string="Onglet 2"><field name="b"/></page></notebook></form>`,
+  "text/xml"
 ).documentElement;
-let renderedPages = 0;
-const nb = renderNotebook(
-  nbNode, {}, {}, null, false,
-  (page, pane) => { renderedPages++; pane.dataset.page = page.getAttribute("string"); }
-);
-ok(!!nb && nb.className === "o_notebook", "renderNotebook : wrapper o_notebook");
-ok(nb.querySelectorAll(".nav-link").length === 2, "renderNotebook : 2 onglets");
-ok(renderedPages === 2, "renderNotebook : callback injecté appelé pour chaque page");
-ok(nb.querySelector('[data-page="Onglet 2"]'), "renderNotebook : pages compilées via le callback");
+const nbTpl = buildFormTemplate(nbRoot, {
+  fieldsInfo: { a: { type: "char", label: "A" }, b: { type: "char", label: "B" } },
+  initialValues: {}, hasRecordId: false,
+});
+ok(nbTpl.templateXml.includes('class="o_notebook"'), "buildFormTemplate : wrapper o_notebook");
+ok((nbTpl.templateXml.match(/nav-link/g) || []).length === 2, "buildFormTemplate : 2 onglets émis");
+ok(nbTpl.templateXml.includes("state.activePage === 1"), "buildFormTemplate : onglets réactifs (state.activePage)");
+ok(nbTpl.fieldSlots.length === 2, "buildFormTemplate : chaque page emporte ses emplacements de champs");
 
 console.log("\n✅ TOUS LES TESTS STRUCTURE PASSENT");

@@ -14,8 +14,9 @@ import "./webclient/home_menu/home_menu.js";
 // via owl/field_bridge.js (char, text, integer, float, boolean, selection,
 // date, datetime, monetary), les relationnels many2one/many2many_tags et
 // le tableau one2many (sous-composants OWL par cellule, état réactif des
-// lignes) ; la vue kanban via views/kanban/kanban_renderer.js (arch
-// compilée en template OWL). Voir static/src/owl/README.md.
+// lignes) ; les vues kanban (kanban_arch_parser) et form
+// (form_arch_parser::buildFormTemplate) sont des composants OWL dont le
+// template est compilé depuis l'arch. Voir static/src/owl/README.md.
 
 // Fusionné depuis core/browser/service_worker.js : chez Odoo l'enregistrement
 // du Service Worker se fait directement au boot, sans fichier dédié.

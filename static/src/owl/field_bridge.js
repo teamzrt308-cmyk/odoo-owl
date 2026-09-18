@@ -62,12 +62,13 @@ export function renderOwlField(Component, { name, fieldTypeClass, props, attribu
     mountPoint.setAttribute(attr, value);
   }
 
-  mountOwlApp(Component, mountPoint, props)
+  const ready = mountOwlApp(Component, mountPoint, props)
     .then(({ component }) => {
       mountPoint._owlComponent = component;
       if (typeof component._attachToHost === "function") {
         component._attachToHost(mountPoint);
       }
+      return component;
     })
     .catch((err) => {
       console.error(
@@ -75,6 +76,11 @@ export function renderOwlField(Component, { name, fieldTypeClass, props, attribu
         err
       );
     });
+
+  // Promesse de disponibilité du widget (résolue après le mount OWL,
+  // jamais rejetée) : consommée par le renderer form pour attendre que
+  // toutes les saisies existent avant la première passe de règles.
+  mountPoint._owlReady = ready;
 
   return mountPoint;
 }
