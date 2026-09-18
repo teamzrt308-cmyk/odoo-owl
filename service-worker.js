@@ -2,7 +2,7 @@
  * service-worker.js
  */
 
-const CACHE_NAME = "offline-sync-standalone-v24";
+const CACHE_NAME = "offline-sync-standalone-v25";
 
 const ASSETS_TO_CACHE = [
   "./",
@@ -11,14 +11,12 @@ const ASSETS_TO_CACHE = [
   "./static/src/bundles/app.bundle.js",
   "./static/lib/dexie.min.js",
   "./static/lib/popper.js",
-  "./css/style_login.css",
   "./static/src/webclient/home_menu/home_menu.css",
   "./css/web.assets_web.min.css",
   "./css/web.assets_frontend.min.css",
   "./css/fonts/fontawesome-webfont.woff",
   "./css/fonts/fontawesome-webfont.woff2",
   "./css/fonts/odoo_ui_icons.woff2",
-  "./assets/menu.png",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
   "./assets/default-app.png",

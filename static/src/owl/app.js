@@ -42,8 +42,8 @@ function waitUntilConnected(el) {
  * @param {Object} [props] - props initiales du composant racine
  * @param {Object<string,string>|string} [templates] - soit une map
  *   { nom: xmlString }, soit une chaîne XML unique contenant plusieurs
- *   <t t-name="..."> (cf. owl/templates.js pour le chargement depuis
- *   des fichiers .xml importés en texte brut via esbuild --loader:.xml=text)
+ *   <t t-name="..."> — chaque composant fournit ses templates (inline
+ *   via owl.xml, ou compilés depuis l'arch, cf. kanban_arch_parser.js).
  * @returns {Promise<{component: owl.Component, app: owl.App, destroy: Function}>}
  */
 export async function mountOwlApp(RootComponent, target, props = {}, templates = {}) {

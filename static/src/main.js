@@ -10,10 +10,11 @@ import "./views/view.js";
 import "./webclient/home_menu/home_menu.js";
 
 
-// OWL — architecture en place (voir static/src/owl/), rien de branché
-// au SPA existant. Import de validation manuelle uniquement, cf.
-// static/src/owl/debug.js.
-import { owlDebug } from "./owl/debug.js";
+// OWL — les premières briques du moteur sont désormais rendues par OWL :
+// les widgets de champ simples via owl/field_bridge.js (char, text,
+// integer, float, boolean, selection, date, datetime, monetary) et la
+// vue kanban via views/kanban/kanban_renderer.js (arch compilée en
+// template OWL). Voir static/src/owl/README.md.
 
 // Fusionné depuis core/browser/service_worker.js : chez Odoo l'enregistrement
 // du Service Worker se fait directement au boot, sans fichier dédié.
@@ -51,7 +52,6 @@ function boot() {
 
   const actionService = mountWebclient();
   window.__pwa_debug__ = { registry, bus, router, actionService };
-  window.__owl_debug__ = owlDebug;
 }
 
 if (document.readyState === "loading") {
