@@ -5,7 +5,7 @@
  * affiché n'a pas de champs price_subtotal/price_total couverts par une
  * règle spécifique (purchase.order.line, sale.order.line...).
  *
- * Déplacée depuis model/relational_model/compute_engine.js::computeLineSubtotal(),
+ * Déplacée depuis views/fields/one2many/compute_engine.js::computeLineSubtotal(),
  * qui réimplémentait qty*price une seconde fois pour ce cas de repli.
  *
  * Les noms de champs réels varient selon le modèle affiché (product_qty,

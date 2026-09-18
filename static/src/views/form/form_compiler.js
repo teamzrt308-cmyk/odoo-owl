@@ -6,7 +6,7 @@
 
 import { isNodeVisible } from "../../core/py_js/py_utils.js";
 import { renderNotebook } from "../../core/notebook/notebook.js";
-import { renderHeaderInto } from "./status_bar_buttons/status_bar_buttons.js";
+import { renderHeaderInto } from "./form_header.js";
 import { renderButtonBox } from "./button_box/button_box.js";
 import { renderGroup } from "./form_group/form_group.js";
 import { renderField } from "../fields/field.js";
@@ -14,7 +14,7 @@ import { renderField } from "../fields/field.js";
 /**
  * NEW param: onObjectButtonClick, threaded through to renderHeaderInto
  * only (the only place where type="object" buttons currently render —
- * see status_bar_buttons/status_bar_buttons.js).
+ * see form_header.js).
  */
 export function renderChildren(xmlNode, headerRow, sheet, fieldsInfo, initialValues, securityContext, hasRecordId, onObjectButtonClick) {
   for (const child of xmlNode.children) {

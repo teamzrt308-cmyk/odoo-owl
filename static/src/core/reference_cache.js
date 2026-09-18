@@ -1,5 +1,5 @@
 /**
- * core/name_service.js
+ * core/reference_cache.js
  * Local cache (id -> display_name) used by Many2one/Many2many widgets to
  * resolve labels without a network call when offline.
  *

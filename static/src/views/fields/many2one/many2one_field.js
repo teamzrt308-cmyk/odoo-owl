@@ -3,7 +3,7 @@
  */
 
 import { queueAction } from "../../../core/network/rpc_service.js";
-import { getReferenceRecords } from "../../../core/name_service.js";
+import { getReferenceRecords } from "../../../core/reference_cache.js";
 
 async function createLocalRecord(relationModel, name) {
   const localUuid = await queueAction(relationModel, "create", { name }, "generic");

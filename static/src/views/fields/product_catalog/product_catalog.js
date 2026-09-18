@@ -197,7 +197,7 @@ function renderCatalogCard(product, quantities, onQtyChange) {
 
 /**
  * Widget entry point. Returns a DOM element ready to be inserted
- * in place of the form — see usage in x2many_field.js.
+ * in place of the form — see usage in one2many_field.js.
  *
  * @param {Array} products - result of getCatalogProductsSmart()
  * @param {Object} existingQuantities - { [productId]: qty } pre-filled values

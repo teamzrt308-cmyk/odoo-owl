@@ -1,5 +1,5 @@
 /**
- * webclient/conflict_detail.js
+ * webclient/conflict_detail/conflict_detail.js
  * Page dédiée à la résolution complète d'un conflit — ouverte depuis
  * conflict_panel.js (clic sur une entrée de la liste). Affiche chaque
  * champ en conflit avec "Votre modification" / "Modification serveur"
@@ -8,14 +8,14 @@
  * champ par champ, une action = une décision).
  */
 
-import { resolveModelDisplayInfo } from "../core/model_display.js";
-import { getCachedRecord } from "../core/record_cache.js";
-import { getReferenceRecordsSmart } from "../core/name_service.js";
-import { db } from "../core/orm_service.js";
-import { registry } from "../core/registry.js";
-import { getApiKey, CONFIG } from "../core/browser/session.js";
-import { bus } from "../core/bus/bus_service.js";
-import { getCachedConflicts, resolveConflict } from "../core/network/rpc_service.js";
+import { resolveModelDisplayInfo } from "../../core/model_display.js";
+import { getCachedRecord } from "../../core/record_cache.js";
+import { getReferenceRecordsSmart } from "../../core/reference_cache.js";
+import { db } from "../../core/orm_service.js";
+import { registry } from "../../core/registry.js";
+import { getApiKey, CONFIG } from "../../core/browser/session.js";
+import { bus } from "../../core/bus/bus_service.js";
+import { getCachedConflicts, resolveConflict } from "../../core/network/rpc_service.js";
 
 function formatFieldLabel(fieldName) {
   const lineMatch = fieldName.match(/^(.+)\[(\d+)\]\.(.+)$/);

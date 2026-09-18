@@ -2,7 +2,7 @@
  * webclient/webclient.js
  */
 
-import "./conflict_detail.js";
+import "./conflict_detail/conflict_detail.js";
 import { router } from "../core/browser/router_service.js";
 import { bus } from "../core/bus/bus_service.js";
 import { CONFIG, getApiKey } from "../core/browser/session.js";

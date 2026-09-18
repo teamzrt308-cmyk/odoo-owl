@@ -477,7 +477,7 @@ export function getDefaultValue(model, field, currentValues) {
 // ---------------------------------------------------------------------------
 // Exécution compute/onchange pour UNE SEULE ligne, sans documentGraph complet
 // -- utilisé par les widgets qui manipulent le DOM directement (ex:
-// x2many_field.js), qui n'ont pas besoin de la cascade complète sur
+// one2many_field.js), qui n'ont pas besoin de la cascade complète sur
 // racine+lignes gérée par runDocumentRules().
 // ---------------------------------------------------------------------------
 

@@ -8,11 +8,11 @@
 import { bus } from "../../core/bus/bus_service.js";
 import { CONFIG, getApiKey } from "../../core/browser/session.js";
 import { getModuleManifest, resolveModelViews } from "../view_service.js";
-import { getReferenceRecordsSmart } from "../../core/name_service.js";
+import { getReferenceRecordsSmart } from "../../core/reference_cache.js";
 import { getRecordSmart } from "../../core/record_cache.js";
 import { getSecurityInfo } from "../../core/user_service.js";
 import { renderFormView } from "./form_renderer.js";
-import { attachLiveBusinessRules } from "../../model/relational_model/relational_model.js";
+import { attachLiveBusinessRules } from "./dynamic_field_attrs.js";
 import { runDocumentRules, validateDocument, computeStockEffects, computeOptimisticStateUpdate } from "../../model/rules_engine/rules_engine.js";
 import { collectFormData, buildDocumentGraph, applyDocumentGraphToDom, applyLineRowToDom } from "./form_serializer.js";
 import { addLedgerDelta, getAggregatedDeltasByField } from "../../core/local_ledger.js";
@@ -311,7 +311,7 @@ export async function mountFormController(container, params, env) {
    * - The button's "context" attribute (e.g. context="{'validate_analytic': True}")
    *   is not evaluated/forwarded yet — args/kwargs are sent empty.
    * - type="action" buttons are out of scope for this iteration
-   *   (see status_bar_buttons/status_bar_buttons.js, unchanged behavior for them).
+   *   (see form_header.js, unchanged behavior for them).
    */
   async function onObjectButtonClick(methodName) {
     if (!currentRecordId) {

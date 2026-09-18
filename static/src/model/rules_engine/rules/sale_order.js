@@ -6,7 +6,7 @@
  * vente (au lieu de "product_qty" côté achat).
  *
  * Déplacé depuis les mêmes fichiers que purchase_order.js (voir ce
- * fichier pour le détail), le générique x2many_field.js gérant les deux
+ * fichier pour le détail), le générique one2many_field.js gérant les deux
  * modèles avec la même fonction avant cette extraction.
  */
 

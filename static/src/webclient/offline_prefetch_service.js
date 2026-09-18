@@ -5,7 +5,7 @@
 import { fetchAndStoreModuleManifest } from "../views/view_service.js";
 import { fetchAndStoreListRecords, fetchAndStorePurchaseDashboard } from "../core/list_cache.js";
 import { fetchAndStoreRecord } from "../core/record_cache.js";
-import { fetchAndStoreReferenceRecords } from "../core/name_service.js";
+import { fetchAndStoreReferenceRecords } from "../core/reference_cache.js";
 import { fetchAndStoreSecurityInfo } from "../core/user_service.js";
 
 export async function downloadFullApp(moduleName, apiKey, baseUrl, onProgress = () => {}) {

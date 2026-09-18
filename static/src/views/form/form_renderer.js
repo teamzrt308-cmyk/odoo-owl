@@ -1,34 +1,29 @@
 /**
  * views/form/form_renderer.js
  * Builds the DOM skeleton of the Odoo form (o_form_view, o_form_sheet_bg,
- * statusbar, chatter stub), then delegates the recursive compilation of
- * the XML architecture to form_compiler.js.
+ * statusbar, chatter stub) from the arch PRE-parsed by form_arch_parser.js
+ * (same parser/renderer responsibility split as in Odoo), then delegates
+ * the recursive compilation of the architecture to form_compiler.js.
  */
 
 import { renderChildren } from "./form_compiler.js";
+import { parseFormViewArch } from "./form_arch_parser.js";
 
 /**
  * NEW param: onObjectButtonClick, forwarded unchanged to renderChildren
- * (see form_compiler.js / core/notebook/notebook.js / status_bar_buttons/status_bar_buttons.js / button_box/button_box.js).
+ * (see form_compiler.js / core/notebook/notebook.js / form_header.js / button_box/button_box.js).
  */
 export function renderFormView(archXml, fieldsInfo, initialValues = {}, securityContext = null, onObjectButtonClick = null) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(archXml, "text/xml");
+  const parsed = parseFormViewArch(archXml);
 
-  const parseError = doc.querySelector("parsererror");
-  if (parseError) {
-    console.error("Erreur de parsing XML:", parseError.textContent);
+  if (parsed.error) {
+    console.error("[form_renderer]", parsed.error);
     const errDiv = document.createElement("div");
     errDiv.textContent = "Impossible d'afficher ce formulaire (erreur de structure).";
     return errDiv;
   }
 
-  const formRoot = doc.querySelector("form");
-  if (!formRoot) {
-    const errDiv = document.createElement("div");
-    errDiv.textContent = "Aucun élément <form> trouvé dans cette vue.";
-    return errDiv;
-  }
+  const formRoot = parsed.formRoot;
 
   const hasRecordId = !!(initialValues && initialValues.id);
   const formView = document.createElement("div");

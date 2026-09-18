@@ -1,9 +1,9 @@
 /**
- * views/fields/x2many/x2many_field.js
+ * views/fields/one2many/one2many_field.js
  */
 
 import { evaluateSimpleCondition } from "../../../core/py_js/py_utils.js";
-import { attachComputeEngine } from "../../../model/relational_model/compute_engine.js";
+import { attachComputeEngine } from "./compute_engine.js";
 import { runLineRules, checkOndeleteGuard } from "../../../model/rules_engine/rules_engine.js";
 import { getElementValue } from "../../form/form_serializer.js";
 import { getApiKey, CONFIG } from "../../../core/browser/session.js";
@@ -539,7 +539,7 @@ export function renderOne2manyField(name, info, node, initialValue, parentValues
       // purchase.order.line/sale.order.line, mais le point de branchement
       // est désormais actif : dès qu'une règle sera ajoutée (ex: interdire
       // la suppression d'une ligne déjà facturée), elle sera respectée ici
-      // sans toucher à x2many_field.js.
+      // sans toucher à one2many_field.js.
       if (lineModel) {
         const rowValues = {};
         for (const [col, ref] of Object.entries(tr._cellRefs)) {

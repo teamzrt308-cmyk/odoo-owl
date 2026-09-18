@@ -1,12 +1,12 @@
 /**
- * webclient/login.js
+ * webclient/login/login.js
  */
 
-import { registry } from "../core/registry.js";
-import { CONFIG, saveSession } from "../core/browser/session.js";
-import { fetchAndStoreSecurityInfo } from "../core/user_service.js";
-import { ensureCacheOwnership } from "../core/cache_owner.js"; 
-import { loadScopedCss, unloadScopedCss } from "../core/assets.js";
+import { registry } from "../../core/registry.js";
+import { CONFIG, saveSession } from "../../core/browser/session.js";
+import { fetchAndStoreSecurityInfo } from "../../core/user_service.js";
+import { ensureCacheOwnership } from "../../core/cache_owner.js"; 
+import { loadScopedCss, unloadScopedCss } from "../../core/assets.js";
 
 const LOGIN_TEMPLATE = `
   <div id="wrapwrap">

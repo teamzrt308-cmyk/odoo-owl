@@ -6,10 +6,10 @@
  * du modèle Python purchase.order.line.
  *
  * Déplacé depuis :
- *  - views/fields/x2many/x2many_field.js::applyCatalogSelection()
+ *  - views/fields/one2many/one2many_field.js::applyCatalogSelection()
  *    (le calcul name/price_unit/price_subtotal/price_total y était dupliqué
  *    deux fois : une pour les lignes existantes, une pour les nouvelles)
- *  - model/relational_model/compute_engine.js (recalcul du total qty*price,
+ *  - views/fields/one2many/compute_engine.js (recalcul du total qty*price,
  *    fait indépendamment en lisant le DOM)
  */
 
@@ -20,7 +20,7 @@ export const purchaseOrderLineRules = [
     trigger: { fields: ["product_id"] },
     // db : snapshot { get(model, id) } -- résolu par rules_engine à partir
     // du cache local product.product (ou fourni directement par
-    // x2many_field.js à partir du catalogue déjà en mémoire).
+    // one2many_field.js à partir du catalogue déjà en mémoire).
     compute(line, db) {
       const product = db.get("product.product", line.product_id);
       if (!product) return null;

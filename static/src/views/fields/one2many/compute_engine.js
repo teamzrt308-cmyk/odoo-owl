@@ -1,12 +1,15 @@
 /**
- * model/relational_model/compute_engine.js
- * Real-time recalculation of the
- * total of a One2many field (e.g., order lines), resolving
- * the parent document's currency.
+ * views/fields/one2many/compute_engine.js
+ * Recalcul temps réel du total d'un champ one2many (ex: lignes de
+ * commande), avec résolution de la devise du document parent.
+ *
+ * Positionné à côté de one2many_field.js (son unique consommateur) --
+ * l'équivalent Odoo des agrégats de colonnes calculés par le renderer
+ * de liste, spécialisé ici pour la table one2many du formulaire.
  */
 
-import { getReferenceRecords } from "../../core/name_service.js";
-import { runLineRules } from "../rules_engine/rules_engine.js";
+import { getReferenceRecords } from "../../../core/reference_cache.js";
+import { runLineRules } from "../../../model/rules_engine/rules_engine.js";
 
 const QTY_FIELD_CANDIDATES = ["product_uom_qty", "product_qty", "quantity", "qty"];
 const PRICE_FIELD_CANDIDATES = ["price_unit"];
@@ -24,7 +27,7 @@ function computeTotalFromRows(tbody) {
     if (!tr._cellRefs) return;
 
     // price_total (ou à défaut price_subtotal) est déjà calculé par la
-    // règle _compute_amount de rules_engine (voir x2many_field.js ->
+    // règle _compute_amount de rules_engine (voir one2many_field.js ->
     // runLineRules) -- on le réutilise au lieu de refaire qty*price ici,
     // ce qui dupliquait la même règle métier avec le risque de diverger
     // (ex: si des taxes sont ajoutées un jour à la règle mais pas ici).

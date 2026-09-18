@@ -25,7 +25,7 @@ export function buildDocumentGraph(container, fieldsInfo, rawRootValues = {}) {
   for (const [fieldName, info] of Object.entries(fieldsInfo)) {
     if (info.type === "one2many") {
       // info.relation : modèle des lignes (ex: "purchase.order.line"),
-      // fourni par fields_get() -- même hypothèse que x2many_field.js.
+      // fourni par fields_get() -- même hypothèse que one2many_field.js.
       if (info.relation) {
         lines[fieldName] = { model: info.relation, rows: formData[fieldName] || [] };
       }

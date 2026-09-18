@@ -2,7 +2,7 @@
  * views/fields/many2many_tags/many2many_tags_field.js
  */
 
-import { getReferenceRecords } from "../../../core/name_service.js";
+import { getReferenceRecords } from "../../../core/reference_cache.js";
 
 export function renderMany2manyTagsField(name, info, node, initialValue) {
   const wrapper = document.createElement("div");

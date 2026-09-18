@@ -8,10 +8,15 @@
  * .o_action_manager, NOT the global navbar (.o_navbar contains only
  * the apps menu and the systray; never the search bar, pager, or breadcrumb).
  *
+ * The breadcrumb block itself lives in webclient/breadcrumb/ (same
+ * layout as Odoo) and is assembled here.
+ *
  * Each controller calls buildControlPanel({ ...options }) and receives
  * the root element to insert into its own rendering, along with
  * references to the sub-elements it must populate or attach listeners to itself.
  */
+
+import { buildBreadcrumb } from "../../webclient/breadcrumb/breadcrumb.js";
 
 export function buildControlPanel({
   withNewButton = false,
@@ -47,25 +52,8 @@ export function buildControlPanel({
     mainButtons.appendChild(newBtn);
   }
 
-  const breadcrumb = document.createElement("div");
-  breadcrumb.className = "o_breadcrumb d-flex gap-1 text-truncate align-items-center";
+  const { breadcrumb, breadcrumbListItem, breadcrumbListLink, breadcrumbCurrent } = buildBreadcrumb();
   breadcrumbsCol.appendChild(breadcrumb);
-
-  const breadcrumbListItem = document.createElement("div");
-  breadcrumbListItem.className = "o_breadcrumb_item d-none";
-  breadcrumbListItem.innerHTML = `
-    <a href="#" class="o_breadcrumb_item_link text-truncate"></a>
-    <i class="oi oi-chevron-right mx-1 text-muted small"></i>
-  `;
-  breadcrumb.appendChild(breadcrumbListItem);
-  const breadcrumbListLink = breadcrumbListItem.querySelector("a");
-
-  const lastBreadcrumbItem = document.createElement("div");
-  lastBreadcrumbItem.className = "o_last_breadcrumb_item active d-flex fs-4 min-w-0 align-items-center";
-  const breadcrumbCurrent = document.createElement("span");
-  breadcrumbCurrent.className = "min-w-0 text-truncate";
-  lastBreadcrumbItem.appendChild(breadcrumbCurrent);
-  breadcrumb.appendChild(lastBreadcrumbItem);
 
   // ⚙️ Decorative "view options" icon (Import/Export/Columns...) —
   // NON-FUNCTIONAL for now; purely visual to match the
@@ -77,7 +65,8 @@ export function buildControlPanel({
     optionsGearBtn.className = "btn btn-link p-0 ms-1 lh-sm border-0";
     optionsGearBtn.title = "Options de vue";
     optionsGearBtn.innerHTML = '<i class="fa fa-cog"></i>';
-    lastBreadcrumbItem.appendChild(optionsGearBtn);
+    optionsGearBtn.style.marginLeft = "4px";
+    breadcrumbCurrent.parentElement.appendChild(optionsGearBtn);
   }
 
   let cloudBtn = null;

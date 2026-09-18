@@ -5,7 +5,7 @@
  * and dynamic attributes (readonly, required)
 */
 
-import { applyDynamicAttrs } from "../../model/relational_model/dynamic_field_attrs.js";
+import { applyDynamicAttrs } from "../form/dynamic_field_attrs.js";
 
 import { renderCharField } from "./char/char_field.js";
 import { renderTextField } from "./text/text_field.js";
@@ -18,7 +18,7 @@ import { renderDatetimeField } from "./datetime/datetime_field.js";
 import { renderMonetaryField } from "./monetary/monetary_field.js";
 import { renderMany2oneField } from "./many2one/many2one_field.js";
 import { renderMany2manyTagsField } from "./many2many_tags/many2many_tags_field.js";
-import { renderOne2manyField } from "./x2many/x2many_field.js";
+import { renderOne2manyField } from "./one2many/one2many_field.js";
 
 const SUPPORTED_FIELD_WIDGETS = {
   char: renderCharField,
@@ -95,7 +95,7 @@ export function renderField(node, fieldsInfo, initialValues, securityContext, ha
   return cell;
 }
 
-/** Used by fields/x2many/x2many_field.js to create a row input cell. */
+/** Used by fields/one2many/one2many_field.js to create a row input cell. */
 export function createFieldInput(fieldName, info, initialValue) {
   const renderer = SUPPORTED_FIELD_WIDGETS[info.type];
   if (!renderer) return null;
