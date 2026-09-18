@@ -1,37 +1,57 @@
 /**
  * views/fields/date/date_field.js
+ * Widget de champ Date rendu par OWL, via owl/field_bridge.js --
+ * même pattern que char_field.js. Input natif type="date" : calendrier
+ * + format yyyy-mm-dd garanti par le navigateur (valeur déjà ISO côté
+ * Odoo, aucune conversion nécessaire).
  */
 
-export function renderDateField(name, info, node, initialValue) {
-  const input = document.createElement("input");
-  input.type = "date"; // native: calendar + yyyy-mm-dd format guaranteed by the browser
-  input.className = "o_input";
-  input.id = `field-${name}`;
-  input.name = name;
-  input.placeholder = node ? (node.getAttribute("placeholder") || "") : "";
-  if (info.required) input.required = true;
-  if (initialValue) input.value = initialValue; // already in ISO format, no conversion necessary
-  return input;
+import { renderOwlField, computeReadonly, computeRequired } from "../../../owl/field_bridge.js";
+
+class DateFieldOwl extends owl.Component {
+  static template = owl.xml`
+    <input type="date"
+           class="o_input"
+           t-att-id="props.id"
+           t-att-name="props.name"
+           t-att-placeholder="props.placeholder"
+           t-att-required="props.required"
+           t-att-readonly="props.readonly"
+           t-att-style="props.readonly ? 'background-color:#f5f5f5' : ''"
+           t-att-value="state.value"
+           t-on-input="onInput"
+    />
+  `;
+
+  static props = {
+    id: String,
+    name: String,
+    placeholder: { type: String, optional: true },
+    required: { type: Boolean, optional: true },
+    readonly: { type: Boolean, optional: true },
+    initialValue: { type: String, optional: true },
+  };
+
+  setup() {
+    this.state = owl.useState({ value: this.props.initialValue || "" });
+  }
+
+  onInput(ev) {
+    this.state.value = ev.target.value;
+  }
 }
 
-/**
- * Converts an ISO date (yyyy-mm-dd, Odoo format) to the French
- * dd/mm/yyyy display format.
- */
-export function isoToDisplayDate(isoValue) {
-  if (!isoValue) return "";
-  const [year, month, day] = isoValue.split("-");
-  if (!year || !month || !day) return "";
-  return `${day}/${month}/${year}`;
-}
-
-/**
- * Converts a date displayed in dd/mm/yyyy format to the ISO format (yyyy-mm-dd)
- * expected by Odoo.
- */
-export function displayDateToIso(displayValue) {
-  if (!displayValue) return false;
-  const [day, month, year] = displayValue.split("/");
-  if (!day || !month || !year) return false;
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+export function renderDateField(name, info, node, initialValue, initialValues) {
+  return renderOwlField(DateFieldOwl, {
+    name,
+    fieldTypeClass: "date",
+    props: {
+      id: `field-${name}`,
+      name,
+      placeholder: node ? (node.getAttribute("placeholder") || "") : "",
+      required: computeRequired(node, info, initialValues),
+      readonly: computeReadonly(node, initialValues),
+      initialValue: initialValue ? String(initialValue) : "",
+    },
+  });
 }

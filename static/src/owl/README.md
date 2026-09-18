@@ -49,28 +49,26 @@ déjà fait pour tout le reste du moteur.
 
 ### 3. Coexistence avec le moteur vanilla
 
-Rien n'est branché à `core/registry.js` ni à `views/view.js`. Le
-composant `DebugPing` n'est monté que manuellement, depuis la console :
+Les briques légères sont rendues par OWL : les widgets de champ simples
+(char, text, integer, float, boolean, selection, date, datetime,
+monetary) via `owl/field_bridge.js`, et la vue kanban via
+`views/kanban/kanban_renderer.js` (arch compilée en template OWL). Le
+reste du moteur (form/list/one2many/many2one...) continue de générer du
+DOM direct — la migration se fait brique par brique sans changer le
+contrat `mount(container, params, env) -> destroy()` des contrôleurs.
 
-```js
-window.__owl_debug__.mountSmokeTest()   // affiche un compteur en bas à droite
-window.__owl_debug__.unmountSmokeTest() // le retire, détruit l'App
-```
+L'ancien smoke test console (`DebugPing`, `owl/debug.js`,
+`owl/templates.js`) a été SUPPRIMÉ : il servait à valider la chaîne
+OWL avant toute brique réelle ; la kanban et les champs exercent
+désormais cette chaîne en conditions réelles.
 
-Câblé dans `main.js` (import + exposition sur `window`), mais jamais
-appelé automatiquement au boot.
-
-## Fichiers créés
+## Fichiers
 
 ```
 static/lib/owl.iife.js              # vendorisé (build réel fourni par l'utilisateur)
 static/src/owl/
   app.js                            # mountOwlApp() : owl.mount() + accès destroy
-  templates.js                      # buildTemplateMap() : liste [name, xml] -> objet
-  debug.js                          # mount/unmount du smoke test, exposé sur window
-  components/debug_ping/
-    debug_ping.js                   # Component OWL (state, event, props.onClose)
-    debug_ping.xml                  # template : compteur + bouton +1 + bouton Fermer
+  field_bridge.js                   # renderOwlField(), computeReadonly/Required
 ```
 
 ## Exports vérifiés (37 au total)
@@ -88,27 +86,27 @@ validateType, whenReady, xml.
 - ✅ Syntaxe ESM de tous les fichiers (`node --check`)
 - ✅ `owl.iife.js` est bien un build réel et complet d'OWL (37 exports
   confirmés par inspection directe du fichier)
-- ⚠️ **Pas d'exécution réelle testée ici** : ce sandbox n'a pas accès
-  réseau pour installer `esbuild` (`npm install` échoue, 403) ni jsdom
-  pour simuler un DOM en Node. Le bundling (`bash scripts/build-bundle.sh`)
-  et le smoke test (`window.__owl_debug__.mountSmokeTest()`) sont à
-  valider dans un vrai navigateur, après `cd scripts && npm install`
-  en local.
+- ✅ Chaîne OWL validée de bout en bout en jsdom (montage réel de
+  `owl.iife.js`) : vue kanban, widgets de champ, attrs dynamiques.
 
 ## Prochaine étape (hors périmètre ici)
 
-Une fois cette base validée en navigateur : choisir UN composant pilote
-réel à migrer (proposition : un champ simple comme `char_field.js`,
-le plus petit périmètre testable) avant d'attaquer form/list/kanban.
+Une fois les trois widgets relationnels migrés : compiler l'arch form
+en templates OWL (attrs dynamiques résolus au parsing, comme le
+form_arch_parser natif) avant d'attaquer les contrôleurs.
 
-## État des migrations OWL (mise à jour)
+## État des migrations OWL
 
-- ✅ `views/fields/char/char_field.js` : widget de champ OWL via
-  `owl/field_bridge.js` (`renderOwlField`), template inline `owl.xml`.
+- ✅ Widgets de champ simples, tous via `owl/field_bridge.js`
+  (`renderOwlField`, template inline `owl.xml`) : `char`, `text`,
+  `integer`, `float`, `boolean`, `selection`, `date`, `datetime`,
+  `monetary` — soit 9 des 12 types du registre de `views/fields/field.js`.
 - ✅ `views/kanban/kanban_renderer.js` : vue kanban rendue par un
   composant OWL dont le template est COMPILÉ depuis l'arch à chaque
   mount (`kanban_arch_parser.js`) -- même flux que le webclient natif
   (arch -> template QWeb/OWL -> composant). Montage async géré par
   `list_controller.js` (jeton anti-course + destroy propre).
-- ⏳ Reste : autres widgets de champ (via field_bridge), puis les
-  renderers/contrôleurs form et liste.
+- ⏳ Reste : `many2one`, `many2many_tags`, `one2many` (logique de
+  dropdown/catalogue plus lourde), puis le renderer form (arch ->
+  template OWL) et enfin les contrôleurs.
+
