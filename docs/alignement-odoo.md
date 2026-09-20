@@ -22,7 +22,8 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
   char, text, integer, float, boolean, selection, date, datetime, monetary,
   **many2one** (recherche + dropdown + création locale `tmp:<uuid>` + no_create),
   **many2many_tags** (badges + JSON),
-  **one2many** (sous-composants OWL par cellule, état réactif des lignes, total réactif, catalogue produits en overlay, colonnes optionnelles, API impératives `getLines`/`applyLineUpdates`/`adjustLineFields`).
+  **one2many** (sous-composants OWL par cellule, état réactif des lignes, total réactif, catalogue produits en overlay, colonnes optionnelles, API impératives `getLines`/`applyLineUpdates`/`adjustLineFields`),
+  **statusbar** (itération 8 : composant OWL, ordre naturel des étapes façon Odoo 17 -- l'ancien rendu les inversait, filtre statusbar_visible, o_first/o_last sur la liste visible).
 
 ### Renderer kanban (itération 1)
 - `kanban_arch_parser.js` : **arch → template OWL compilé**, `KanbanRenderer` composant OWL (t-if/t-esc/t-foreach/t-set/t-attf, scope `record`).
@@ -52,7 +53,6 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 4. Calendrier, gantt, activité… : hors périmètre actuel (à trancher explicitement).
 
 ### Widgets de champ
-5. **statusbar encore vanilla** (`views/fields/statusbar/`) — dernier widget non OWL.
 6. Widgets Odoo absents (à trancher selon besoins PWA) : badge, url, image, handle, email/phone, many2one_avatar, favorite, percentage, color…
 
 ### Modèle de données
@@ -78,9 +78,8 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 ---
 
 ## Ordre de reprise suggéré
-1. statusbar en OWL (clôt « 100 % des widgets ») ;
-2. renderer LIST en OWL (clôt « 100 % des renderers ») ;
-3. contrôleur kanban dédié + group by ;
+1. renderer LIST en OWL (clôt « 100 % des renderers ») ;
+2. contrôleur kanban dédié + group by ;
 4. shell webclient OWL (navbar/home_menu/user_menu) ;
 5. search avancé (filtres/groupBy/favoris) ;
 6. ActionService étendu + notifications.

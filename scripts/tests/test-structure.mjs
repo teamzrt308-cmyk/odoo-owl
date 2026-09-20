@@ -63,17 +63,36 @@ ok(cpModule.ControlPanel.components && cpModule.ControlPanel.components.Breadcru
 // Le comportement réel (save/undo, engrenage, pager, switcher) est
 // couvert de bout en bout par test-controller-owl / test-list-controller-owl.
 
-// --- 4. Widget statusbar (views/fields/statusbar/) ---
+// --- 4. Widget statusbar OWL (views/fields/statusbar/) ---
+// Composant OWL monté via le field bridge : ordre NATUREL des étapes
+// (alignement Odoo 17 -- l'ancien rendu DOM les inversait), filtre
+// statusbar_visible conservé, valeur courante toujours affichée.
 const { renderStatusbarField } = await import(REPO + "/static/src/views/fields/statusbar/statusbar.js");
-const node = new dom.window.DOMParser().parseFromString(
+const sbNode = new dom.window.DOMParser().parseFromString(
   '<field name="state" widget="statusbar" statusbar_visible="draft,sent"/>', "text/xml"
 ).documentElement;
-const info = { selection: [["draft", "Brouillon"], ["sent", "Envoyée"], ["done", "Terminée"]] };
-const sb = renderStatusbarField("state", info, node, "sent");
-ok(sb.classList.contains("o_field_statusbar"), "renderStatusbarField -> wrapper o_field_statusbar");
-const labels = [...sb.querySelectorAll(".o_arrow_button")].map((b) => b.textContent);
-ok(labels.join(",") === "Envoyée,Brouillon", `étapes filtrées par statusbar_visible (${labels.join(" | ")})`);
+const sbInfo = { selection: [["draft", "Brouillon"], ["sent", "Envoyée"], ["done", "Terminée"]] };
+const sbSpan = renderStatusbarField("state", sbInfo, sbNode, "sent");
+ok(sbSpan.classList.contains("o_field_statusbar_mount") && sbSpan._owlReady, "statusbar : span field bridge + _owlReady");
+// Le mount OWL attend la connexion au DOM (waitUntilConnected) : insérer avant l'attente.
+document.body.appendChild(sbSpan);
+await sbSpan._owlReady;
+const sb = sbSpan.querySelector(".o_field_statusbar");
+ok(!!sb && sb.classList.contains("o_field_widget") && sb.classList.contains("o_readonly_modifier"),
+   "statusbar : wrapper o_field_widget o_readonly_modifier o_field_statusbar");
+const sbButtons = [...sb.querySelectorAll(".o_arrow_button")];
+const labels = sbButtons.map((b) => b.textContent);
+ok(labels.join(",") === "Brouillon,Envoyée", `ordre naturel + filtre statusbar_visible (${labels.join(" | ")})`);
 ok(sb.querySelector(".o_arrow_button_current")?.textContent === "Envoyée", "étape courante marquée");
+ok(sbButtons[0].classList.contains("o_first") && sbButtons[sbButtons.length - 1].classList.contains("o_last"),
+   "statusbar : o_first/o_last sur la liste VISIBLE");
+ok(sbButtons.every((b) => b.disabled), "statusbar : étapes désactivées (lecture seule)");
+ok(sb.querySelector('[data-value="sent"]')?.getAttribute("aria-checked") === "true", "statusbar : aria-checked sur l'étape courante");
+// Sans valeur courante : la première étape est active (comportement historique)
+const sbSpan2 = renderStatusbarField("state2", sbInfo, sbNode, undefined);
+document.body.appendChild(sbSpan2);
+await sbSpan2._owlReady;
+ok(sbSpan2.querySelector(".o_arrow_button_current")?.textContent === "Brouillon", "statusbar : sans valeur -> 1re étape active");
 
 // --- 5. dynamic_field_attrs (views/form/) ---
 const { applyDynamicAttrs, markReadonly, resetDynamicAttrs, attachLiveBusinessRules } =

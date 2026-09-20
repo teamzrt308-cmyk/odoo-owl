@@ -100,8 +100,7 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
 - ✅ Widgets de champ simples, tous via `owl/field_bridge.js`
   (`renderOwlField`, template inline `owl.xml`) : `char`, `text`,
   `integer`, `float`, `boolean`, `selection`, `date`, `datetime`,
-  `monetary` -- 9 des 12 types du registre de `views/fields/field.js`.
-- ✅ `many2one` et `many2many_tags` : composants OWL (recherche +
+  `monetary` -- 9 des 12 types du registre de `views/fields/field.js`.- ✅ `many2one` et `many2many_tags` : composants OWL (recherche +
   dropdown sur le cache de référence local, création locale via la file
   de sync) ; contrat DOM du sérialiseur conservé (input caché).
 - ✅ `one2many` : composant OWL avec état réactif des lignes, cellules
@@ -111,6 +110,12 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   sur l'hôte (`getLines()`/`applyLineUpdates()`/`adjustLineFields()`)
   consommées par form_serializer/form_controller -- plus aucun scraping
   DOM des lignes (tr._cellRefs/_getTbody supprimés).
+- ✅ `statusbar` : composant OWL (`views/fields/statusbar/`) -- dernier
+  widget de champ migré : TOUS les widgets de champ du moteur sont
+  désormais rendus par OWL. Ordre NATUREL des étapes (alignement Odoo
+  17 ; l'ancien rendu DOM les inversait), filtre `statusbar_visible`
+  avec valeur courante toujours affichée, o_first/o_last sur la liste
+  visible, étapes désactivées (lecture seule).
 - ✅ `views/form/form_renderer.js` : la vue FORMULAIRE est rendue par un
   composant OWL dont le template est COMPILÉ depuis l'arch à chaque
   mount (`form_arch_parser.js::buildFormTemplate` -- même flux que le

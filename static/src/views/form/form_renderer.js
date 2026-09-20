@@ -62,7 +62,9 @@ export class FormRenderer extends owl.Component {
       if (!host) continue;
 
       if (slot.kind === "statusbar") {
-        // Widget statusbar (views/fields/statusbar/) -- rendu synchrone.
+        // Widget statusbar (views/fields/statusbar/) -- composant OWL
+        // monté par le field bridge : sa promesse _owlReady rejoint les
+        // autres, FormRenderer.ready garantit aussi son affichage.
         const info = this.props.fieldsInfo[slot.name];
         const wrapper = renderStatusbarField(
           slot.name,
@@ -70,7 +72,10 @@ export class FormRenderer extends owl.Component {
           slot.node,
           (this.props.initialValues || {})[slot.name]
         );
-        if (wrapper) host.replaceWith(wrapper);
+        if (wrapper) {
+          if (wrapper._owlReady) pending.push(wrapper._owlReady);
+          host.replaceWith(wrapper);
+        }
         continue;
       }
 
