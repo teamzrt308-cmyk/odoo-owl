@@ -163,6 +163,13 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   `mountKanbanView(..., groupBy)` construit les colonnes (en-tête
   libellé + badge compteur, « Aucun » pour les valeurs vides), template
   compilé à trois branches (groupé / vide / à plat).
+- ✅ Panneaux systray + login (itération 15) : `ConnectivityIndicator`,
+  `SyncStatusPanel` et `ConflictPanel` composants OWL embeddés dans la
+  Navbar (plus de mounts vanilla par sélecteurs ni createDropdown/
+  Popper), `Login` OWL (descripteur { mount } inchangé, phases du
+  bouton, flux login -> session -> cache ownership -> droits ->
+  redirectTo conservé) ; fichiers supprimés : core/dropdown/dropdown.js,
+  user_menu/user_menu.js (vanilla) -- TOUT le shell est OWL.
 - ✅ Shell webclient (itération 14) : `Navbar` composant OWL
   (navbar_component.js -- gabarit vanilla et écouteurs bus de
   webclient.js absorbés, ids/classes conservés pour les panneaux

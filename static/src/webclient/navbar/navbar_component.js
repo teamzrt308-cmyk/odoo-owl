@@ -32,11 +32,14 @@ import { buildMenuTree, findFirstModel } from "./navbar.js";
 import { loadOdooAssets, unloadOdooAssets } from "../../core/assets.js";
 import { mountOwlApp } from "../../owl/app.js";
 import { UserMenu } from "../user_menu/user_menu_owl.js";
+import { ConnectivityIndicator } from "./connectivity_indicator.js";
+import { SyncStatusPanel } from "./sync_status_panel.js";
+import { ConflictPanel } from "./conflict_panel.js";
 
 const NAVBAR_VISIBLE_TAGS = new Set(["home_menu", "list_view", "form_view", "ir.actions.act_window", "conflict_detail"]);
 
 export class Navbar extends owl.Component {
-  static components = { UserMenu };
+  static components = { UserMenu, ConnectivityIndicator, SyncStatusPanel, ConflictPanel };
 
   static props = {
     doAction: { type: Function, optional: true },
@@ -73,10 +76,9 @@ export class Navbar extends owl.Component {
           </div>
         </div>
         <div class="o_menu_systray d-flex flex-shrink-0 ms-auto" role="menu">
-          <!-- Ancrages des panneaux systray vanilla (webclient.js) -->
-          <div id="connectivity-indicator" class="d-flex align-items-center px-2" title="Statut de connexion">
-            <span id="connectivity-dot" class="rounded-circle d-inline-block" style="width:10px; height:10px;"/>
-          </div>
+          <!-- Panneaux systray OWL (itération 15) : plus de mounts
+               vanilla par sélecteurs, les composants sont embeddés. -->
+          <ConnectivityIndicator/>
           <div class="o-dropdown dropdown o-mail-DiscussSystray-class o-dropdown--no-caret">
             <button type="button" class="dropdown-toggle" tabindex="0" aria-expanded="false">
               <i class="fa fa-lg fa-comments" role="img" aria-label="Messages"/>
@@ -93,21 +95,8 @@ export class Navbar extends owl.Component {
                     t-esc="state.user.pendingActivities or ''"/>
             </button>
           </div>
-          <div class="o-dropdown dropdown o_sync_errors_menu o-dropdown--no-caret">
-            <button id="sync-status-btn" type="button" class="dropdown-toggle position-relative" tabindex="0" aria-expanded="false" title="Synchronisation">
-              <i class="fa fa-lg fa-cloud-upload" role="img" aria-label="Synchronisation"/>
-              <span id="badge-sync-pending" class="o-mail-MessagingMenu-counter badge rounded-pill bg-secondary" style="display:none;"/>
-              <span id="badge-sync-errors" class="o-mail-MessagingMenu-counter badge rounded-pill bg-danger" style="display:none;"/>
-            </button>
-            <div id="sync-status-dropdown" class="dropdown-menu dropdown-menu-end p-0" style="min-width: 340px; max-height: 420px; overflow-y: auto;"/>
-          </div>
-          <div class="o-dropdown dropdown o_sync_conflicts_menu o-dropdown--no-caret">
-            <button id="conflict-status-btn" type="button" class="dropdown-toggle position-relative" tabindex="0" aria-expanded="false" title="Conflits de synchronisation">
-              <i class="fa fa-lg fa-exclamation-triangle" role="img" aria-label="Conflits"/>
-              <span id="badge-sync-conflicts" class="o-mail-MessagingMenu-counter badge rounded-pill bg-warning" style="display:none;"/>
-            </button>
-            <div id="conflict-status-dropdown" class="dropdown-menu dropdown-menu-end p-0" style="min-width: 340px; max-height: 420px; overflow-y: auto;"/>
-          </div>
+          <SyncStatusPanel/>
+          <ConflictPanel doAction="props.doAction"/>
           <div class="o-dropdown dropdown o_switch_company_menu d-none d-md-block o-dropdown--no-caret">
             <button type="button" class="dropdown-toggle" tabindex="0" aria-expanded="false">
               <i class="fa fa-building d-lg-none"/>

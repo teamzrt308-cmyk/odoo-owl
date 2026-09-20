@@ -1,86 +1,108 @@
 /**
  * webclient/login/login.js
+ * ========================
+ * Login -- composant OWL, même architecture qu'Odoo 17 (l'écran de
+ * connexion est un composant du webclient) : le gabarit vanilla
+ * LOGIN_TEMPLATE et son listener de submit sont remplacés par un
+ * composant OWL à état réactif (phases du bouton, message d'erreur).
+ *
+ * Le descripteur du registre "actions" est INCHANGÉ ({ mount:
+ * mountLogin }) et le flux de connexion également : POST
+ * /offline_sync/login -> saveSession -> purge du cache si changement
+ * d'utilisateur (ensureCacheOwnership) -> droits (Security Engine) ->
+ * retour à l'écran demandé avant la redirection (params.redirectTo) ou
+ * au home menu.
  */
 
 import { registry } from "../../core/registry.js";
 import { CONFIG, saveSession } from "../../core/browser/session.js";
 import { fetchAndStoreSecurityInfo } from "../../core/user_service.js";
-import { ensureCacheOwnership } from "../../core/cache_owner.js"; 
+import { ensureCacheOwnership } from "../../core/cache_owner.js";
 import { loadScopedCss, unloadScopedCss } from "../../core/assets.js";
+import { mountOwlApp } from "../../owl/app.js";
 
-const LOGIN_TEMPLATE = `
-  <div id="wrapwrap">
-    <main>
-      <div class="container py-5">
-        <div style="max-width: 300px;" class="card border-0 mx-auto bg-100 o_database_list">
-          <div class="card-body">
-            <div class="text-center pb-3 border-bottom mb-4">
-              <img alt="Logo" style="max-height:120px; max-width: 100%; width:auto"
-                   src="https://upload.wikimedia.org/wikipedia/commons/2/2c/Odoo-logo.svg">
-            </div>
+export class Login extends owl.Component {
+  static props = {
+    params: { type: Object, optional: true },
+    env: { optional: true },
+  };
 
-            <form class="oe_login_form" role="form" id="login-form">
-              <div class="mb-3 field-login">
-                <label for="login-email" class="form-label">E-mail</label>
-                <input type="text" placeholder="E-mail" id="login-email" required
-                       autocomplete="username" autofocus autocapitalize="off" class="form-control">
+  static template = owl.xml`
+    <div id="wrapwrap">
+      <main>
+        <div class="container py-5">
+          <div class="card border-0 mx-auto bg-100 o_database_list" style="max-width: 300px;">
+            <div class="card-body">
+              <div class="text-center pb-3 border-bottom mb-4">
+                <img alt="Logo" style="max-height:120px; max-width:100%; width:auto"
+                     src="https://upload.wikimedia.org/wikipedia/commons/2/2c/Odoo-logo.svg"/>
               </div>
 
-              <div class="mb-3">
-                <label for="login-password" class="form-label">Mot de passe</label>
-                <input type="password" placeholder="Mot de passe" id="login-password" required
-                       autocomplete="current-password" maxlength="4096" class="form-control">
-              </div>
+              <form class="oe_login_form" role="form" t-on-submit.prevent="onSubmit">
+                <div class="mb-3 field-login">
+                  <label for="login-email" class="form-label">E-mail</label>
+                  <input type="text" placeholder="E-mail" id="login-email" required="required"
+                         autocomplete="username" autocapitalize="off" class="form-control" t-ref="email"/>
+                </div>
 
-              <div class="clearfix oe_login_buttons text-center gap-1 d-grid mb-1 pt-3">
-                <button type="submit" id="login-btn" class="btn btn-primary">Se connecter</button>
-                <p id="error" class="text-danger small mt-2 mb-0" style="display:none;"></p>
-              </div>
-              <div class="justify-content-between mt-2 d-flex small">
-                <a href="http://localhost:8069/web/signup?">Vous n'avez pas de compte ?</a>
-                <a href="http://localhost:8069/web/reset_password?">Réinitialiser le mot de passe</a>
-              </div>
-                <div class="o_login_auth"></div>
-              </div>
-              <input type="hidden" name="redirect">
-            </form>
+                <div class="mb-3">
+                  <label for="login-password" class="form-label">Mot de passe</label>
+                  <input type="password" placeholder="Mot de passe" id="login-password" required="required"
+                         autocomplete="current-password" maxlength="4096" class="form-control" t-ref="password"/>
+                </div>
 
-            <div class="text-center small mt-4 pt-3 border-top">
-              <a class="border-end pe-2 me-1" href="http://localhost:8069/web/database/manager">Gestion des bases de données</a>
-              <a href="https://www.odoo.com/?utm_source=db&amp;utm_medium=auth" target="_blank">Généré par <span>Odoo</span></a>
+                <div class="clearfix oe_login_buttons text-center gap-1 d-grid mb-1 pt-3">
+                  <button type="submit" id="login-btn" class="btn btn-primary" t-att-disabled="state.submitting"
+                          t-esc="buttonLabel"/>
+                  <p t-if="state.error" id="error" class="text-danger small mt-2 mb-0" t-esc="state.error"/>
+                </div>
+                <div class="justify-content-between mt-2 d-flex small">
+                  <a href="http://localhost:8069/web/signup?">Vous n'avez pas de compte ?</a>
+                  <a href="http://localhost:8069/web/reset_password?">Réinitialiser le mot de passe</a>
+                </div>
+                <div class="o_login_auth"/>
+                <input type="hidden" name="redirect"/>
+              </form>
+
+              <div class="text-center small mt-4 pt-3 border-top">
+                <a class="border-end pe-2 me-1" href="http://localhost:8069/web/database/manager">Gestion des bases de données</a>
+                <a href="https://www.odoo.com/?utm_source=db&amp;utm_medium=auth" target="_blank">Généré par <span>Odoo</span></a>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </main>
-  </div>
-`;
+      </main>
+    </div>`;
 
-/**
- * Mounts the login screen. params.redirectTo (optional) is the
- * action descriptor the user was trying to reach before
- * being redirected here by the authentication guard.
- */
-function mountLogin(container, params, env) {
-  container.innerHTML = LOGIN_TEMPLATE;
+  setup() {
+    this.emailRef = owl.useRef("email");
+    this.passwordRef = owl.useRef("password");
+    // phases : "" (repos), "login", "cache", "rights"
+    this.state = owl.useState({ submitting: false, phase: "", error: "" });
+  }
 
-  loadScopedCss("css/web.assets_frontend.min.css", "odoo-frontend-assets-login");
+  get buttonLabel() {
+    if (!this.state.submitting) return "Se connecter";
+    return {
+      login: "Connexion...",
+      cache: "Vérification du cache local...",
+      rights: "Chargement des droits...",
+    }[this.state.phase] || "Se connecter";
+  }
 
-  const form = container.querySelector("#login-form");
-  const emailEl = container.querySelector("#login-email");
-  const passwordEl = container.querySelector("#login-password");
-  const errorEl = container.querySelector("#error");
-  const btn = container.querySelector("#login-btn");
+  setError(message) {
+    this.state.error = message;
+    this.state.submitting = false;
+    this.state.phase = "";
+  }
 
-  async function onSubmit(event) {
-    event.preventDefault();
+  async onSubmit() {
+    const email = this.emailRef.el ? this.emailRef.el.value : "";
+    const password = this.passwordRef.el ? this.passwordRef.el.value : "";
 
-    const email = emailEl.value;
-    const password = passwordEl.value;
-
-    errorEl.style.display = "none";
-    btn.disabled = true;
-    btn.textContent = "Connexion...";
+    this.state.error = "";
+    this.state.submitting = true;
+    this.state.phase = "login";
 
     try {
       const response = await fetch(`${CONFIG.ODOO_BASE_URL}/offline_sync/login`, {
@@ -92,10 +114,7 @@ function mountLogin(container, params, env) {
       const data = await response.json();
 
       if (!response.ok) {
-        errorEl.textContent = data.error || "Erreur de connexion";
-        errorEl.style.display = "block";
-        btn.disabled = false;
-        btn.textContent = "Se connecter";
+        this.setError(data.error || "Erreur de connexion");
         return;
       }
 
@@ -105,46 +124,48 @@ function mountLogin(container, params, env) {
         api_key: data.api_key,
       });
 
-      // Purges the local cache if it belonged to another user,
-      btn.textContent = "Vérification du cache local...";
+      // Purge le cache local s'il appartenait à un autre utilisateur.
+      this.state.phase = "cache";
       try {
         await ensureCacheOwnership(data.uid);
       } catch (cacheErr) {
         console.error("Erreur lors de la vérification du cache local :", cacheErr);
-        errorEl.textContent = "Erreur lors de l'initialisation du cache local. Réessayez.";
-        errorEl.style.display = "block";
-        btn.disabled = false;
-        btn.textContent = "Se connecter";
+        this.setError("Erreur lors de l'initialisation du cache local. Réessayez.");
         return;
       }
 
-      // Retrieve permissions (Security Engine) immediately after login.
-      // Do not block the connection if this fails: the user will still be
-      // able to use the app, simply without cached permissions for the time being.
-      btn.textContent = "Chargement des droits...";
+      // Récupère les droits (Security Engine) juste après la connexion.
+      // Ne bloque pas la connexion en cas d'échec : l'app reste
+      // utilisable, simplement sans droits en cache pour le moment.
+      this.state.phase = "rights";
       try {
         await fetchAndStoreSecurityInfo(data.api_key, CONFIG.ODOO_BASE_URL);
       } catch (securityErr) {
         console.warn("Impossible de récupérer les droits (Security Engine) :", securityErr);
       }
 
-      // Returns to the screen requested prior to the authentication redirect,
-      // or "home_menu" by default (direct login, without a deep link).
-      const target = params.redirectTo || { tag: "home_menu" };
-      await env.doAction(target, { replace: true, clearStack: true });
+      // Retourne à l'écran demandé avant la redirection d'authentification,
+      // ou au home menu (connexion directe, sans deep link).
+      const target = (this.props.params && this.props.params.redirectTo) || { tag: "home_menu" };
+      await this.props.env.doAction(target, { replace: true, clearStack: true });
     } catch (err) {
-      errorEl.textContent = "Impossible de contacter le serveur. Vérifiez votre connexion.";
-      errorEl.style.display = "block";
-      btn.disabled = false;
-      btn.textContent = "Se connecter";
+      this.setError("Impossible de contacter le serveur. Vérifiez votre connexion.");
     }
   }
+}
 
-  form.addEventListener("submit", onSubmit);
-
+/**
+ * Montage de l'écran de connexion (contrat { mount } du registre
+ * "actions" conservé : sync -> { destroy }).
+ * params.redirectTo (optionnel) : l'action que l'utilisateur essayait
+ * d'atteindre avant d'être redirigé ici par la garde d'authentification.
+ */
+export async function mountLogin(container, params, env) {
+  loadScopedCss("css/web.assets_frontend.min.css", "odoo-frontend-assets-login");
+  const { destroy } = await mountOwlApp(Login, container, { params, env });
   return {
     destroy() {
-      form.removeEventListener("submit", onSubmit);
+      destroy();
       unloadScopedCss("odoo-frontend-assets-login");
     },
   };

@@ -8,10 +8,10 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ## ✅ Terminé
 
 ### Socle technique
-- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v35).
+- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v38).
 - **Persistance hors ligne** : IndexedDB/Dexie — caches record/list/reference/catalog/manifest, file de sync (`rpc_service`), ledger local.
 - **Règles métier** : `model/rules_engine/` (onchange/compute génériques + spécifiques purchase/sale/stock, access, domain, default) portées de la logique serveur ; `core/py_js/` (evaluateSimpleCondition, isNodeVisible).
-- **Tests** : 10 suites jsdom versionnées (`scripts/tests/`, ~270 assertions), exécutables offline.
+- **Tests** : 12 suites jsdom versionnées (`scripts/tests/`, ~340 assertions), exécutables offline.
 
 ### Structure & flux (itération 1)
 - Registre `registry.category("views")` + dispatcher `views/view.js` (`resolveViewType` : view demandée → form si id/isNew → list) — même flux qu'Odoo (ActionService → registry views).
@@ -99,6 +99,24 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
   mutation d'objet imbriqué de useState non réactive (remplacer
   l'objet entier).
 
+### Panneaux systray OWL + login (itération 15)
+- `ConnectivityIndicator` OWL : point de statut (rouge/vert), ping réel
+  (fetch + timeout 3 s) périodique et aux événements online/offline ;
+- `SyncStatusPanel` OWL : badges pending/errors (titre contextuel),
+  dropdown (titre, « Tout réessayer », section en attente spinner/
+  horloge, items d'erreur Réessayer/Supprimer avec confirm),
+  auto-sync au retour en ligne / sur l'onglet, bus sync:updated ;
+- `ConflictPanel` OWL : badge, liste compacte (libellés de champs
+  formatés « name (ligne #2) »), clic -> doAction conflict_detail ;
+- `Login` OWL : descripteur { mount: mountLogin } INCHANGÉ, état
+  réactif (phases du bouton Connexion... / Vérification du cache
+  local... / Chargement des droits..., message d'erreur), flux
+  conservé (login -> saveSession -> ensureCacheOwnership -> Security
+  Engine -> doAction redirectTo|home_menu) ;
+- SUPPRIMÉS (plus aucun consommateur) : `core/dropdown/dropdown.js`
+  (createDropdown/Popper) et `user_menu/user_menu.js` vanilla ;
+- webclient.js : plus aucun panneau vanilla -- TOUT le shell est OWL.
+
 ### Search avancé : filtres + favoris (itération 12)
 - `search/search_arch_parser.js` : arch `<search>` → filtres (attribut
   `domain`, quotes + tuples Python convertis en JSON) et filtres de
@@ -153,7 +171,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 9. SearchBar : filtres/favoris/group by FAITS (itération 12) ; reste l'auto-complétion des `<field>` du `<search>` et les domaines dynamiques (Odoo withSearch complet) ; engrenage options purement décoratif.
 
 ### Shell webclient
-11. Systray : panneaux sync/conflits/connectivité + login encore vanilla (navbar, user_menu et home_menu sont OWL depuis l'itération 14).
+11. Systray messaging : boutons Messages/Activités de la navbar décoratifs (pas de menu, comme le chatter stub).
 12. **ActionService** : couvre act_window/home/form ; manque ir.actions.server/act_url/client actions, effets (Odoo action_service complet).
 13. **Chatter/mail** : stub non fonctionnel (thread/composer/followers/activités côté Odoo).
 14. Notifications/toasts : alert() natif, pas de notification service.
@@ -167,8 +185,9 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ---
 
 ## Ordre de reprise suggéré
-1. panneaux systray OWL (sync/conflits/connectivité) + login OWL ;
-2. ActionService étendu + notifications.
+1. ActionService étendu + notifications (toasts OWL) ;
+2. chatter/mail stub, widgets additionnels ;
+3. i18n, router, e2e navigateur, a11y.
 
 ## Écarts assumés (spécificité hors ligne, à ne PAS « corriger »)
 - Champs montés par `field_bridge` (contrat DOM sérialiseur) plutôt que tags `<Field>` OWL ;

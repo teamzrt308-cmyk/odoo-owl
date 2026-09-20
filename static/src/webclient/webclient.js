@@ -5,25 +5,17 @@
  * la manière du moteur hors ligne : le gabarit vanilla de la navbar et
  * ses manipulations DOM impératives ont été migrés dans le composant
  * OWL Navbar (webclient/navbar/navbar_component.js), qui consomme
- * elle-même les bus "action:changed"/"user:info". Il reste ici :
- *  - le squelette (racine navbar, conteneur d'action, toasts de
- *    conflit) ;
- *  - la création de l'ActionService (dispatcher du registre "actions")
- *    et la restauration de l'état routeur ;
- *  - le montage des panneaux systray restés vanilla (statut de
- *    synchronisation, conflits, connectivité) DANS le DOM rendu par la
- *    Navbar OWL -- les ids sont conservés (prochaine étape : les
- *    migrer aussi) ;
- *  - le menu utilisateur est le composant OWL UserMenu, embeddé dans
- *    la Navbar (user_menu_owl.js).
+ * elle-même les bus "action:changed"/"user:info". Depuis l'itération
+ * 15, TOUTE la systray est OWL (connectivité, synchronisation,
+ * conflits, menu utilisateur -- composants embeddés dans la Navbar) :
+ * il reste ici le squelette (racine navbar, conteneur d'action, toasts
+ * de conflit), la création de l'ActionService (dispatcher du registre
+ * "actions") et la restauration de l'état routeur.
  */
 
 import "./conflict_detail/conflict_detail.js";
 import { router } from "../core/browser/router_service.js";
 import { createActionService } from "./actions/action_service.js";
-import { mountSyncStatusPanel } from "./navbar/sync_status_panel.js";
-import { mountConnectivityIndicator } from "./navbar/connectivity_indicator.js";
-import { mountConflictPanel } from "./navbar/conflict_panel.js";
 import { mountNavbar } from "./navbar/navbar_component.js";
 
 function detectTouchDevice() {
@@ -37,6 +29,7 @@ function ensureWebclientSkeleton() {
   if (!navbarRoot) {
     navbarRoot = document.createElement("div");
     navbarRoot.id = "webclient-navbar-root";
+    navbarRoot.style.display = "contents";
     document.body.appendChild(navbarRoot);
   }
 
@@ -69,15 +62,12 @@ export async function mountWebclient() {
   const { navbarRoot, container, toastContainer } = ensureWebclientSkeleton();
   const actionService = createActionService(container);
 
-  // Navbar OWL (itération 14) : la visibilité, les assets, le menu et
-  // les infos utilisateur sont gérés par le composant (bus), plus rien
-  // ici. Le bind est nécessaire : doAction est appelé en callback.
+  // Navbar OWL (itérations 14-15) : la visibilité, les assets, le
+  // menu, les infos utilisateur ET toute la systray (connectivité,
+  // synchronisation, conflits, menu utilisateur) sont des composants
+  // OWL embeddés. Le bind est nécessaire : doAction est appelé en
+  // callback.
   await mountNavbar(navbarRoot, { doAction: actionService.doAction.bind(actionService) });
-
-  // Panneaux systray vanilla, montés dans le DOM OWL (ids conservés).
-  mountSyncStatusPanel(navbarRoot);
-  mountConflictPanel(navbarRoot, actionService);
-  mountConnectivityIndicator(navbarRoot);
 
   actionService.restoreState(router.current);
 

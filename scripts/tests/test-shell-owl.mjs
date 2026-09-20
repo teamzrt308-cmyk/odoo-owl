@@ -140,13 +140,9 @@ const { destroy: destroyNavbar } = await mountNavbar(navHost, { doAction });
 
 ok(navHost.querySelector("header.o_navbar"), "shell : header o_navbar rendu par OWL");
 ok(navHost.querySelector("header.o_navbar").style.display === "none", "shell : navbar masquée avant toute action");
-ok(navHost.querySelector("#sync-status-btn") && navHost.querySelector("#conflict-status-dropdown"),
-   "shell : ancrages des panneaux systray vanilla présents dans le DOM OWL");
-
-// les panneaux vanilla se montent DANS le DOM OWL (ids conservés)
-const { mountSyncStatusPanel } = await import(REPO + "/static/src/webclient/navbar/sync_status_panel.js");
-const syncPanel = mountSyncStatusPanel(navHost);
-ok(typeof syncPanel.destroy === "function", "shell : panneau sync vanilla monté dans la navbar OWL");
+// systray 100% OWL (itération 15) : les composants rendent leurs ids historiques
+ok(navHost.querySelector("#connectivity-dot") && navHost.querySelector("#sync-status-btn") && navHost.querySelector("#conflict-status-btn"),
+   "shell : systray OWL rendue (connectivité, sync, conflits)");
 
 // tag non visible -> body bg-100, navbar masquée
 bus.trigger("action:changed", { tag: "login", params: {} });

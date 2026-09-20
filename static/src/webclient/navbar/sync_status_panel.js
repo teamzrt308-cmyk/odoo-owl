@@ -1,8 +1,20 @@
 /**
  * webclient/navbar/sync_status_panel.js
+ * =====================================
+ * SyncStatusPanel -- composant OWL, même architecture qu'Odoo 17 : le
+ * menu de synchronisation est un composant de la systray de la Navbar
+ * (plus de mount vanilla branché par sélecteurs + createDropdown/Popper).
+ *
+ * Le comportement historique est conservé intégralement :
+ *  - badges pending/errors (titre contextuel selon la connexion) ;
+ *  - dropdown : en-tête (compteur + « Tout réessayer »), section des
+ *    actions en file (spinner si en ligne, horloge si hors ligne),
+ *    liste des ERREURS avec Réessayer / Supprimer (confirm) ;
+ *  - auto-sync au retour en ligne / au retour sur l'onglet, refresh au
+ *    bus "sync:updated".
  */
+
 import { bus } from "../../core/bus/bus_service.js";
-import { createDropdown } from "../../core/dropdown/dropdown.js";
 import {
   getSyncQueueSummary,
   getSyncErrorEntries,
@@ -19,209 +31,185 @@ function formatSyncEntryTitle(entry) {
   return `${opLabel} — ${entry.model_name}`;
 }
 
-export function mountSyncStatusPanel(rootEl) {
-  const btn = rootEl.querySelector("#sync-status-btn");
-  const dropdown = rootEl.querySelector("#sync-status-dropdown");
-  const errorBadge = rootEl.querySelector("#badge-sync-errors");
-  const pendingBadge = rootEl.querySelector("#badge-sync-pending");
+export class SyncStatusPanel extends owl.Component {
+  static template = owl.xml`
+    <div class="o-dropdown dropdown o_sync_errors_menu o-dropdown--no-caret position-relative" t-on-click.stop="">
+      <button id="sync-status-btn" type="button" class="dropdown-toggle position-relative" tabindex="0"
+              aria-expanded="false" title="Synchronisation" t-on-click="toggle">
+        <i class="fa fa-lg fa-cloud-upload" role="img" aria-label="Synchronisation"/>
+        <span t-if="state.summary.pending > 0" class="o-mail-MessagingMenu-counter badge rounded-pill bg-secondary"
+              t-esc="state.summary.pending" t-att-title="pendingBadgeTitle"/>
+        <span t-if="state.summary.error > 0" class="o-mail-MessagingMenu-counter badge rounded-pill bg-danger"
+              t-esc="state.summary.error"/>
+      </button>
+      <div t-if="state.open" class="dropdown-menu dropdown-menu-end show o_sync_status_dropdown"
+           style="min-width: 340px; max-height: 420px; overflow-y: auto; position: absolute; top: 100%; right: 0; z-index: 1000;">
+        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+          <strong class="small" t-esc="panelTitle"/>
+          <button t-if="state.errors.length > 0" type="button" class="btn btn-sm btn-link p-0 o_sync_retry_all"
+                  t-att-disabled="state.busyAll" t-on-click.stop="retryAll" t-esc="state.busyAll ? '...' : 'Tout réessayer'"/>
+        </div>
+        <div t-if="state.pendingEntries.length > 0" class="px-3 py-2 border-bottom bg-light">
+          <div class="text-muted small mb-1" t-esc="pendingLabel"/>
+          <div t-foreach="state.pendingEntries" t-as="entry" t-key="entry.id" class="small d-flex align-items-center gap-2">
+            <i t-att-class="navigatorOnline ? 'fa fa-spinner fa-spin text-muted' : 'fa fa-clock-o text-muted'"/>
+            <span t-esc="entryTitle(entry)"/>
+          </div>
+        </div>
+        <div t-if="state.errors.length === 0" class="text-muted text-center p-4 small">Aucune erreur de synchronisation.</div>
+        <div t-foreach="state.errors" t-as="entry" t-key="entry.id" class="px-3 py-2 border-bottom o_sync_error_item">
+          <div class="fw-bold small" t-esc="entryTitle(entry)"/>
+          <div class="text-muted small" t-esc="entry.created_at"/>
+          <div class="small text-danger mt-1" style="word-break: break-word;" t-esc="entry.error_message || 'Erreur inconnue.'"/>
+          <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary o_sync_retry"
+                    t-att-disabled="state.busyEntry === entry.id" t-on-click.stop="() => this.retry(entry)"
+                    t-esc="state.busyEntry === entry.id ? '...' : 'Réessayer'"/>
+            <button type="button" class="btn btn-sm btn-outline-danger o_sync_delete"
+                    t-att-disabled="state.busyEntry === entry.id" t-on-click.stop="() => this.remove(entry)"
+                    t-esc="state.busyEntry === entry.id ? '...' : 'Supprimer'"/>
+          </div>
+        </div>
+      </div>
+    </div>`;
 
-  async function refreshSyncStatus() {
-    const summary = await getSyncQueueSummary();
+  setup() {
+    this.state = owl.useState({
+      open: false,
+      summary: { pending: 0, error: 0 },
+      errors: [],
+      pendingEntries: [],
+      // id de l'entrée en cours d'opération (bouton « ... ») ; busyAll
+      // (booléen) pour « Tout réessayer ».
+      busyEntry: null,
+      busyAll: false,
+    });
+    // Verrou non réactif de l'auto-sync.
+    this.syncInFlight = false;
 
-    if (summary.error > 0) {
-      errorBadge.textContent = summary.error;
-      errorBadge.style.display = "inline-block";
-    } else {
-      errorBadge.style.display = "none";
-    }
+    this.attemptAutoSync = () => this.attemptAutoSyncImpl();
+    window.addEventListener("online", this.attemptAutoSync);
+    this.onVisibilityChange = () => {
+      if (document.visibilityState === "visible") this.attemptAutoSyncImpl();
+    };
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
+    this.onSyncUpdated = () => this.refresh();
+    bus.addEventListener("sync:updated", this.onSyncUpdated);
 
-    if (summary.pending > 0) {
-      pendingBadge.textContent = summary.pending;
-      pendingBadge.title = navigator.onLine
-        ? "En cours de synchronisation..."
-        : "En attente de connexion pour synchroniser";
-      pendingBadge.style.display = "inline-block";
-    } else {
-      pendingBadge.style.display = "none";
-    }
-
-    if (dropdown.classList.contains("show")) {
-      await renderSyncErrorsPanel();
-    }
-  }
-
-  async function renderSyncErrorsPanel() {
-    const [errors, pendingEntries] = await Promise.all([
-      getSyncErrorEntries(),
-      getSyncPendingEntries(),
-    ]);
-    dropdown.innerHTML = "";
-
-    const header = document.createElement("div");
-    header.className = "d-flex justify-content-between align-items-center px-3 py-2 border-bottom";
-    const title = document.createElement("strong");
-    title.className = "small";
-    if (errors.length > 0) {
-      title.textContent = `${errors.length} erreur(s) de synchronisation`;
-    } else if (pendingEntries.length > 0) {
-      title.textContent = navigator.onLine
-        ? `${pendingEntries.length} en cours de synchronisation...`
-        : `${pendingEntries.length} en attente de connexion`;
-    } else {
-      title.textContent = "Synchronisation";
-    }
-    header.appendChild(title);
-
-    if (errors.length > 0) {
-      const retryAllBtn = document.createElement("button");
-      retryAllBtn.type = "button";
-      retryAllBtn.className = "btn btn-sm btn-link p-0";
-      retryAllBtn.textContent = "Tout réessayer";
-      retryAllBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        retryAllBtn.disabled = true;
-        retryAllBtn.textContent = "...";
-        await retryAllSyncErrors();
-        await refreshSyncStatus();
-      });
-      header.appendChild(retryAllBtn);
-    }
-    dropdown.appendChild(header);
-
-    if (pendingEntries.length > 0) {
-      const pendingSection = document.createElement("div");
-      pendingSection.className = "px-3 py-2 border-bottom bg-light";
-
-      const pendingLabel = document.createElement("div");
-      pendingLabel.className = "text-muted small mb-1";
-      pendingLabel.textContent = navigator.onLine
-        ? "En cours d'envoi vers Odoo..."
-        : "Hors-ligne — seront envoyées à la reconnexion :";
-      pendingSection.appendChild(pendingLabel);
-
-      pendingEntries.forEach((entry) => {
-        const line = document.createElement("div");
-        line.className = "small d-flex align-items-center gap-2";
-        const icon = document.createElement("i");
-        icon.className = navigator.onLine ? "fa fa-spinner fa-spin text-muted" : "fa fa-clock-o text-muted";
-        const label = document.createElement("span");
-        label.textContent = formatSyncEntryTitle(entry);
-        line.appendChild(icon);
-        line.appendChild(label);
-        pendingSection.appendChild(line);
-      });
-
-      dropdown.appendChild(pendingSection);
-    }
-
-    if (errors.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "text-muted text-center p-4 small";
-      empty.textContent = "Aucune erreur de synchronisation.";
-      dropdown.appendChild(empty);
-      return;
-    }
-
-    errors.forEach((entry) => {
-      const item = document.createElement("div");
-      item.className = "px-3 py-2 border-bottom";
-
-      const titleEl = document.createElement("div");
-      titleEl.className = "fw-bold small";
-      titleEl.textContent = formatSyncEntryTitle(entry);
-      item.appendChild(titleEl);
-
-      const dateEl = document.createElement("div");
-      dateEl.className = "text-muted small";
-      dateEl.textContent = entry.created_at;
-      item.appendChild(dateEl);
-
-      const msgEl = document.createElement("div");
-      msgEl.className = "small text-danger mt-1";
-      msgEl.style.wordBreak = "break-word";
-      msgEl.textContent = entry.error_message || "Erreur inconnue.";
-      item.appendChild(msgEl);
-
-      const actions = document.createElement("div");
-      actions.className = "d-flex gap-2 mt-2";
-
-      const retryBtn = document.createElement("button");
-      retryBtn.type = "button";
-      retryBtn.className = "btn btn-sm btn-outline-secondary";
-      retryBtn.textContent = "Réessayer";
-      retryBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        retryBtn.disabled = true;
-        retryBtn.textContent = "...";
-        await retrySyncAction(entry.id);
-        await refreshSyncStatus();
-      });
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "btn btn-sm btn-outline-danger";
-      deleteBtn.textContent = "Supprimer";
-      deleteBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (!confirm("Supprimer définitivement cette action non synchronisée ? L'enregistrement devra être recréé.")) return;
-        await deleteSyncAction(entry.id);
-        await refreshSyncStatus();
-      });
-
-      actions.appendChild(retryBtn);
-      actions.appendChild(deleteBtn);
-      item.appendChild(actions);
-
-      dropdown.appendChild(item);
+    owl.onMounted(() => this.refresh());
+    owl.onWillDestroy(() => {
+      window.removeEventListener("online", this.attemptAutoSync);
+      document.removeEventListener("visibilitychange", this.onVisibilityChange);
+      bus.removeEventListener("sync:updated", this.onSyncUpdated);
     });
   }
-  
-  const panel = createDropdown(btn, dropdown, {
-    onOpen: () => renderSyncErrorsPanel(),
-  });
 
-  let syncInFlight = false;
-  async function attemptAutoSync() {
-    if (syncInFlight || !navigator.onLine) {
-      await refreshSyncStatus();
+  get navigatorOnline() {
+    return navigator.onLine;
+  }
+
+  get pendingBadgeTitle() {
+    return navigator.onLine
+      ? "En cours de synchronisation..."
+      : "En attente de connexion pour synchroniser";
+  }
+
+  get panelTitle() {
+    if (this.state.errors.length > 0) {
+      return `${this.state.errors.length} erreur(s) de synchronisation`;
+    }
+    if (this.state.pendingEntries.length > 0) {
+      return navigator.onLine
+        ? `${this.state.pendingEntries.length} en cours de synchronisation...`
+        : `${this.state.pendingEntries.length} en attente de connexion`;
+    }
+    return "Synchronisation";
+  }
+
+  get pendingLabel() {
+    return navigator.onLine
+      ? "En cours d'envoi vers Odoo..."
+      : "Hors-ligne — seront envoyées à la reconnexion :";
+  }
+
+  entryTitle(entry) {
+    return formatSyncEntryTitle(entry);
+  }
+
+  toggle() {
+    this.state.open = !this.state.open;
+    if (this.state.open) this.refresh();
+  }
+
+  close() {
+    this.state.open = false;
+  }
+
+  async refresh() {
+    this.state.summary = await getSyncQueueSummary();
+    // Le contenu détaillé n'est chargé que si le menu est ouvert
+    // (comme l'ancien refreshSyncStatus).
+    if (this.state.open) {
+      const [errors, pendingEntries] = await Promise.all([
+        getSyncErrorEntries(),
+        getSyncPendingEntries(),
+      ]);
+      this.state.errors = errors;
+      this.state.pendingEntries = pendingEntries;
+    }
+  }
+
+  async retry(entry) {
+    this.state.busyEntry = entry.id;
+    try {
+      await retrySyncAction(entry.id);
+      await this.refresh();
+    } finally {
+      this.state.busyEntry = null;
+    }
+  }
+
+  async remove(entry) {
+    if (!confirm("Supprimer définitivement cette action non synchronisée ? L'enregistrement devra être recréé.")) return;
+    this.state.busyEntry = entry.id;
+    try {
+      await deleteSyncAction(entry.id);
+      await this.refresh();
+    } finally {
+      this.state.busyEntry = null;
+    }
+  }
+
+  async retryAll() {
+    this.state.busyAll = true;
+    try {
+      await retryAllSyncErrors();
+      await this.refresh();
+    } finally {
+      this.state.busyAll = false;
+    }
+  }
+
+  /** Auto-sync au retour en ligne / sur l'onglet (comportement conservé). */
+  async attemptAutoSyncImpl() {
+    if (this.syncInFlight || !navigator.onLine) {
+      await this.refresh();
       return;
     }
     const summary = await getSyncQueueSummary();
     if (summary.pending === 0) {
-      await refreshSyncStatus();
+      await this.refresh();
       return;
     }
-    syncInFlight = true;
+    this.syncInFlight = true;
     try {
       await syncPendingActions();
     } catch (err) {
       console.warn("Tentative de synchro automatique échouée, sera retentée:", err);
     } finally {
-      syncInFlight = false;
-      await refreshSyncStatus();
+      this.syncInFlight = false;
+      await this.refresh();
       bus.trigger("sync:updated");
     }
   }
-
-  window.addEventListener("online", attemptAutoSync);
-  const onVisibilityChange = () => {
-    if (document.visibilityState === "visible") attemptAutoSync();
-  };
-  document.addEventListener("visibilitychange", onVisibilityChange);
-
-  const onSyncUpdated = () => refreshSyncStatus();
-  bus.addEventListener("sync:updated", onSyncUpdated);
-
-  refreshSyncStatus();
-
-  return {
-    refreshSyncStatus,
-    attemptAutoSync,
-    destroy() {
-      panel.destroy();
-      window.removeEventListener("online", attemptAutoSync);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      bus.removeEventListener("sync:updated", onSyncUpdated);
-    },
-  };
 }
