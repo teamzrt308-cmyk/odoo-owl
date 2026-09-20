@@ -17,7 +17,9 @@
 import { CONFIG, getApiKey } from "../../core/browser/session.js";
 import { getSecurityInfo } from "../../core/user_service.js";
 import { getModuleManifest, resolveModelViews } from "../view_service.js";
-import { getListRecordsSmart } from "../../core/list_cache.js";
+import { getListRecordsSmart, upsertLocalListRecord } from "../../core/list_cache.js";
+import { patchCachedRecord } from "../../core/record_cache.js";
+import { queueAction, syncPendingActions, amendPendingCreate, getSyncQueueEntry } from "../../core/network/rpc_service.js";
 import { mountKanbanView } from "./kanban_renderer.js";
 import { parseKanbanArch } from "./kanban_arch_parser.js";
 import { recordMatchesQuery } from "../list/list_renderer_utils.js";
@@ -29,6 +31,9 @@ import { filterByRecordRule } from "../../model/rules_engine/rules_engine.js";
 import { mountOwlApp } from "../../owl/app.js";
 
 const GROUPABLE_TYPES = ["char", "selection", "many2one", "boolean"];
+// Types pour lesquels glisser une carte d'une colonne à l'autre a un
+// sens (écrire la valeur du champ de groupement) -- pas pour char.
+const DRAGGABLE_TYPES = ["selection", "many2one", "boolean"];
 
 export class KanbanController extends owl.Component {
   static components = { ControlPanel };
@@ -105,9 +110,136 @@ export class KanbanController extends owl.Component {
     let currentFieldsInfo = null;
     let currentArch = null;
     let currentViewHandle = null;
+    // Champ utilisé par le quick create (équivalent _rec_name : le
+    // champ "name" s'il est char, sinon le premier champ char de l'arch).
+    let nameField = null;
     // Jeton anti-course : les changements rapides (recherche/group by)
     // pendant un mount OWL ne doivent pas laisser deux rendus vivres.
     let renderToken = 0;
+    // Timer du message de statut (quick create / drag & drop).
+    let statusFlashTimer = null;
+
+    function statusFlash(message) {
+      statusEl.textContent = message;
+      clearTimeout(statusFlashTimer);
+      statusFlashTimer = setTimeout(() => {
+        statusEl.textContent = "";
+      }, 3000);
+    }
+
+    // ── Quick create + drag & drop (itération 13) ────────────────────
+    // Le renderer gère le GESTE (input, dragstart/drop) et délègue le
+    // MODÈLE au contrôleur -- même répartition qu'Odoo (renderer ->
+    // model via le contrôleur). Les écritures passent par la file de
+    // synchronisation hors ligne, avec mise à jour optimiste du kanban,
+    // du cache liste et du cache enregistrement.
+
+    function groupByInfo() {
+      return self.ui.groupBy ? (currentFieldsInfo || {})[self.ui.groupBy] || null : null;
+    }
+
+    /** "<champ>:<clé>" -> valeur à écrire (convention buildKanbanColumns). */
+    function columnValueFromKey(info, columnKey) {
+      const rawKey = columnKey.includes(":") ? columnKey.slice(columnKey.indexOf(":") + 1) : columnKey;
+      if (rawKey === "__none__") return false;
+      if (!info) return rawKey;
+      switch (info.type) {
+        case "boolean": return rawKey === "1";
+        case "many2one": return /^\d+$/.test(rawKey) ? parseInt(rawKey, 10) : rawKey;
+        default: return rawKey;
+      }
+    }
+
+    /** Valeur brute -> clé de colonne (miroir de buildKanbanColumns). */
+    function columnKeyOf(info, raw) {
+      const key =
+        info && info.type === "boolean"
+          ? raw ? "1" : "0"
+          : raw === false || raw === undefined || raw === null || raw === ""
+            ? "__none__"
+            : Array.isArray(raw)
+              ? String(raw[0])
+              : String(raw);
+      return `${self.ui.groupBy}:${key}`;
+    }
+
+    self.onQuickCreate = async (columnKey, name) => {
+      const info = groupByInfo();
+      const values = {};
+      if (nameField) values[nameField] = name;
+      if (self.ui.groupBy) values[self.ui.groupBy] = columnValueFromKey(info, columnKey);
+      try {
+        const localUuid = await queueAction(model, "create", values, "generic");
+        const tmpId = `tmp:${localUuid}`;
+        const record = { id: tmpId, ...values };
+        allRecords.push(record);
+        await upsertLocalListRecord(model, actionId, record);
+        statusFlash("Carte créée localement — sera synchronisée dès que possible.");
+        renderCurrent();
+        if (navigator.onLine) {
+          const result = await syncPendingActions();
+          const realId = result.createdIds && result.createdIds[localUuid];
+          if (realId) {
+            const idx = allRecords.findIndex((r) => String(r.id) === tmpId);
+            if (idx >= 0) allRecords[idx] = { ...allRecords[idx], id: realId };
+            await upsertLocalListRecord(model, actionId, allRecords[idx]);
+            renderCurrent();
+            statusFlash("Carte enregistrée et synchronisée avec Odoo.");
+          }
+        }
+      } catch (err) {
+        console.error("[kanban_controller] quick create échoué :", err);
+        statusFlash("Erreur lors de la création : " + err.message);
+      }
+    };
+
+    self.onRecordMove = async (recordId, columnKey) => {
+      const record = allRecords.find((r) => String(r.id) === String(recordId));
+      const info = groupByInfo();
+      if (!record || !info || !self.ui.groupBy) return;
+      const field = self.ui.groupBy;
+      if (columnKeyOf(info, record[field]) === columnKey) return; // même colonne
+      const newValue = columnValueFromKey(info, columnKey);
+      const isTmp = String(record.id).startsWith("tmp:");
+      try {
+        if (isTmp) {
+          // Le create est encore EN FILE : pas de write possible sur un
+          // id tmp -- on amende le payload du create en attente (comme
+          // amendPendingCreate depuis le formulaire).
+          const entry = await getSyncQueueEntry(String(record.id).slice(4));
+          if (entry) {
+            const payload = JSON.parse(entry.payload || "{}");
+            payload[field] = newValue;
+            await amendPendingCreate(String(record.id).slice(4), payload);
+          }
+        } else {
+          await queueAction(model, "write", { id: record.id, [field]: newValue }, "generic");
+        }
+
+        // Mise à jour optimiste : la valeur LOCALE garde la forme du
+        // cache (m2o = tuple [id, libellé]) -- le libellé est repris
+        // d'une carte soeur de la colonne cible s'il en existe une.
+        let localValue = newValue;
+        if (info.type === "many2one") {
+          const sibling = allRecords.find((r) => r !== record && columnKeyOf(info, r[field]) === columnKey);
+          localValue = sibling ? sibling[field] : newValue === false ? false : [newValue, ""];
+        }
+        record[field] = localValue;
+        if (!isTmp) {
+          await patchCachedRecord(model, record.id, { [field]: localValue });
+        }
+        await upsertLocalListRecord(model, actionId, record);
+        statusFlash("Carte déplacée — sera synchronisée dès que possible.");
+        renderCurrent();
+        if (navigator.onLine) {
+          await syncPendingActions();
+          statusFlash("Déplacement synchronisé avec Odoo.");
+        }
+      } catch (err) {
+        console.error("[kanban_controller] déplacement échoué :", err);
+        statusFlash("Erreur lors du déplacement : " + err.message);
+      }
+    };
 
     // Control panel OWL : état réactif + callbacks.
     self.cpDisplay = {
@@ -211,6 +343,10 @@ export class KanbanController extends owl.Component {
 
       const kanbanTarget = document.createElement("div");
       host.appendChild(kanbanTarget);
+      // Drag & drop activé si le champ de groupement est écrivable par
+      // colonne (selection/m2o/boolean) -- pas pour char ni à plat.
+      const info = groupByInfo();
+      const canDrag = !!self.ui.groupBy && !!info && DRAGGABLE_TYPES.includes(info.type);
       try {
         const { destroy } = await mountKanbanView(
           kanbanTarget,
@@ -218,7 +354,12 @@ export class KanbanController extends owl.Component {
           currentFieldsInfo,
           filtered,
           onCardOpen,
-          self.ui.groupBy
+          self.ui.groupBy,
+          {
+            canDrag,
+            onRecordMove: self.onRecordMove,
+            onQuickCreate: self.onQuickCreate,
+          }
         );
         if (token !== renderToken) {
           destroy(); // un autre rendu a été demandé entre-temps -> on jette celui-ci
@@ -287,6 +428,13 @@ export class KanbanController extends owl.Component {
         self.ui.groupByCandidates = groupByCandidates;
         self.ui.favorites = getSearchFavorites(model);
 
+        // Champ « nom » du quick create (équivalent _rec_name hors
+        // ligne : "name" s'il est char, sinon premier char de l'arch).
+        nameField =
+          archInfo && !archInfo.error
+            ? ["name", ...archInfo.fields].find((f) => ((currentFieldsInfo || {})[f] || {}).type === "char") || null
+            : null;
+
         const listData = await getListRecordsSmart(model, apiKey, CONFIG.ODOO_BASE_URL, actionId);
         const securityInfo = await getSecurityInfo(model);
         allRecords = filterByRecordRule(model, listData.records || [], securityInfo);
@@ -305,6 +453,7 @@ export class KanbanController extends owl.Component {
     });
 
     owl.onWillDestroy(() => {
+      clearTimeout(statusFlashTimer);
       destroyCurrentView();
     });
   }

@@ -57,6 +57,22 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 - helpers partagés list/kanban : `groupLabel`, `recordMatchesQuery`
   (list_renderer_utils).
 
+### Quick create kanban + drag & drop (itération 13)
+- `KanbanRenderer` : bouton « + Créer » par colonne (champ `+ Créer` ->
+  input -> Entrée), cartes `draggable`, colonnes cibles surlignées
+  (`o_kanban_drag_over`) -- le renderer gère le GESTE, le contrôleur le
+  MODÈLE (même répartition qu'Odoo) ;
+- `KanbanController.onQuickCreate` : `queueAction(create)` avec
+  `_rec_name` hors ligne (« name » char de l'arch) + valeur du champ de
+  groupement de la colonne (selection/m2o/boolean/char), mise à jour
+  optimiste + `upsertLocalListRecord` (cache liste) + sync en ligne
+  (remplacement tmp:<uuid> -> id réel) ;
+- `KanbanController.onRecordMove` : `queueAction(write)` pour une carte
+  réelle (payload serveur : id int pour m2o), **amende du create en
+  attente** (`amendPendingCreate`) pour une carte tmp, libellé m2o
+  repris d'une carte soeur, `patchCachedRecord` + cache liste ;
+- désactivé pour un group by char et en grille à plat (`canDrag`).
+
 ### Search avancé : filtres + favoris (itération 12)
 - `search/search_arch_parser.js` : arch `<search>` → filtres (attribut
   `domain`, quotes + tuples Python convertis en JSON) et filtres de
@@ -97,7 +113,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 
 ### Vues
 1. **Pivot / Graph** : placeholders « à venir » (Odoo : renderers + mesures/groupes).
-2. Kanban : pas encore de quick create (« + » en colonne), chargement dynamique par colonne.
+2. Kanban : pas de chargement dynamique par colonne (tout est en cache) ni de réordonnancement intra-colonne ; pas de quick create sur la grille à plat.
 3. Calendrier, gantt, activité… : hors périmètre actuel (à trancher explicitement).
 
 ### Widgets de champ
@@ -125,9 +141,8 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ---
 
 ## Ordre de reprise suggéré
-1. quick create kanban + drag & drop de cartes ;
-2. shell webclient OWL (navbar/home_menu/user_menu) ;
-3. ActionService étendu + notifications.
+1. shell webclient OWL (navbar/home_menu/user_menu) ;
+2. ActionService étendu + notifications.
 
 ## Écarts assumés (spécificité hors ligne, à ne PAS « corriger »)
 - Champs montés par `field_bridge` (contrat DOM sérialiseur) plutôt que tags `<Field>` OWL ;

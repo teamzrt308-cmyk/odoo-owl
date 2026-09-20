@@ -79,10 +79,14 @@ function compileCardTemplate(templateNode, doc) {
 function buildRendererTemplate(cardInner) {
   return `
 <t t-name="${RENDERER_TEMPLATE_NAME}">
-  <div class="o_kanban_view">
+  <div class="o_kanban_view" t-ref="root">
     <div t-if="props.groupBy and props.columns and props.columns.length > 0" class="o_kanban_renderer o_kanban_grouped d-flex gap-3 p-3 overflow-auto">
       <div t-foreach="props.columns" t-as="column" t-key="column.key"
-           class="o_kanban_group" style="min-width: 320px; width: 320px; flex-shrink: 0;">
+           t-att-class="'o_kanban_group' + (state.dragOverColumn === column.key ? ' o_kanban_drag_over' : '')"
+           style="min-width: 320px; width: 320px; flex-shrink: 0;"
+           t-on-dragover.prevent="(ev) => this.onColumnDragOver(ev, column.key)"
+           t-on-drop.prevent="(ev) => this.onColumnDrop(ev, column.key)"
+           t-on-dragend="() => this.onRecordDragEnd()">
         <div class="o_kanban_header d-flex align-items-center gap-2 py-2">
           <span class="o_kanban_group_title fw-bold" t-esc="column.label"/>
           <span class="o_kanban_count badge text-bg-secondary" t-esc="column.records.length"/>
@@ -92,9 +96,18 @@ function buildRendererTemplate(cardInner) {
           <div t-else="" t-foreach="column.records" t-as="record"
                t-key="record.id.raw_value != null ? record.id.raw_value : record_index"
                class="o_kanban_record" style="cursor:pointer;"
-               t-on-click="() => props.onCardClick(record.id.raw_value)">
+               t-att-draggable="props.canDrag ? 'true' : 'false'"
+               t-on-click="() => props.onCardClick(record.id.raw_value)"
+               t-on-dragstart="(ev) => this.onRecordDragStart(ev, record.id.raw_value)">
             ${cardInner}
           </div>
+        </div>
+        <div t-if="props.onQuickCreate" class="o_kanban_quick_add text-muted small mt-1" role="button"
+             t-on-click="() => this.openQuickCreate(column.key)">+ Créer</div>
+        <div t-if="state.quickCreateColumn === column.key" class="o_kanban_quick_create mt-1" t-on-click.stop="">
+          <input type="text" class="form-control form-control-sm o_quick_create_input"
+                 placeholder="Ajouter une carte..." t-on-keydown="(ev) => this.onQuickCreateKeydown(ev, column.key)"
+                 t-on-blur="() => this.closeQuickCreate()"/>
         </div>
       </div>
     </div>

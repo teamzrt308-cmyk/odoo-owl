@@ -2,7 +2,7 @@
  * service-worker.js
  */
 
-const CACHE_NAME = "offline-sync-standalone-v35";
+const CACHE_NAME = "offline-sync-standalone-v36";
 
 const ASSETS_TO_CACHE = [
   "./",

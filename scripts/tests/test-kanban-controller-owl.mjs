@@ -44,14 +44,24 @@ class FakeTable {
   constructor(rows = [], keyFn = null) { this.rows = rows; this.keyFn = keyFn; }
   async put(obj) { this.rows.push(obj); }
   async bulkPut() {}
-  async add(obj) { this.rows.push(obj); return { id: this.rows.length }; }
+  async add(obj) { const id = this.rows.length + 1; this.rows.push({ id, ...obj }); return { id }; }
+  async update(key, changes) {
+    const i = this.rows.findIndex((r) => r.id === key);
+    if (i >= 0) this.rows[i] = { ...this.rows[i], ...changes };
+  }
   async get(key) { return this.keyFn ? (this.rows.find((r) => this.keyFn(r, key)) || undefined) : undefined; }
   where(clause) {
     const rows = this.rows;
-    return {
-      equals: () => ({ toArray: async () => rows }),
-      toArray: async () => rows.filter((r) => Object.entries(clause || {}).every(([k, v]) => r[k] === v)),
-    };
+    if (typeof clause === "string") {
+      return {
+        equals: (value) => {
+          const filtered = rows.filter((r) => r[clause] === value);
+          return { toArray: async () => filtered, first: async () => filtered[0], count: async () => filtered.length };
+        },
+      };
+    }
+    const filtered = () => rows.filter((r) => Object.entries(clause || {}).every(([k, v]) => r[k] === v));
+    return { toArray: async () => filtered(), first: async () => filtered()[0], count: async () => filtered().length };
   }
 }
 class FakeDexie {
@@ -62,7 +72,8 @@ class FakeDexie {
     this.catalog_cache = new FakeTable();
     this.security_info = new FakeTable();
     this.module_manifests = new FakeTable([], (r, k) => r.technical_name === k);
-    this.record_cache = new FakeTable();
+    // clé composée [model, record_id] (getCachedRecord/patchCachedRecord)
+    this.record_cache = new FakeTable([], (r, k) => Array.isArray(k) ? r.model === k[0] && r.record_id === k[1] : r.model === k);
     this.installed_apps = new FakeTable();
     this.local_ledger = new FakeTable();
     this.list_cache = new FakeTable([], (r, k) => r.model === k);
@@ -81,6 +92,7 @@ const fieldsInfo = {
 const kanbanArch = `<?xml version="1.0"?>
 <kanban default_group_by="state">
   <field name="name"/>
+  <field name="state"/>
   <field name="amount_total"/>
   <templates>
     <t t-name="kanban-box">
@@ -104,7 +116,7 @@ const { parseKanbanArch } = await import(REPO + "/static/src/views/kanban/kanban
 {
   const parsed = parseKanbanArch(kanbanArch);
   ok(!parsed.error && parsed.defaultGroupBy === "state", "kanban-ctrl : default_group_by extrait de l'arch");
-  ok(parsed.fields.join(",") === "name,amount_total", "kanban-ctrl : champs du template collectés");
+  ok(parsed.fields.join(",") === "name,state,amount_total", "kanban-ctrl : champs de l arch collectés (name, amount_total, state)");
 }
 
 // ── 2. mountKanbanView avec groupBy : colonnes ──
@@ -144,6 +156,9 @@ await db.module_manifests.put({
   views: { "crm.lead": { default: { kanban: { arch: kanbanArch }, list: { arch: listArch } } } },
 });
 await db.list_cache.put({ model: "crm.lead::lead_action", records, total: records.length });
+for (const rec of records) {
+  await db.record_cache.put({ model: "crm.lead", record_id: rec.id, data: { ...rec }, updated_at: "seed" });
+}
 
 const { initRulesEngine } = await import(REPO + "/static/src/model/rules_engine/rules_engine.js");
 const { allRules } = await import(REPO + "/static/src/model/rules_engine/rules/index.js");
@@ -179,7 +194,7 @@ ok(container.querySelector(".o_groupby_button"), "kanban-ctrl : menu Grouper par
 container.querySelector(".o_groupby_button").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 await tick();
 const items = [...container.querySelectorAll(".o_groupby_menu a.dropdown-item")].map((a) => a.textContent.trim());
-ok(items.join(",") === "Aucun groupe,Référence", `kanban-ctrl : candidats depuis le template (${items.join(" | ")})`);
+ok(items.join(",") === "Aucun groupe,Référence,État", `kanban-ctrl : candidats depuis le template (${items.join(" | ")})`);
 
 // retour à plat via « Aucun groupe »
 const noGroup = [...container.querySelectorAll(".o_groupby_menu a.dropdown-item")].find((a) => a.textContent.includes("Aucun groupe"));
@@ -224,6 +239,106 @@ await tick();
 const switchAction = actions[actions.length - 1];
 ok(switchAction && switchAction[0].tag === "list_view" && switchAction[0].model === "crm.lead",
    "kanban-ctrl : switch list -> doAction(list_view)");
+
+// ── 4. Quick create + drag & drop (itération 13) ──
+// regroupement par État (candidate de l'arch kanban)
+container.querySelector(".o_groupby_button").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+for (let i = 0; i < 200 && !container.querySelector(".o_groupby_menu"); i++) await tick();
+const etatItem = [...container.querySelectorAll(".o_groupby_menu a.dropdown-item")].find((a) => a.textContent.includes("État"));
+etatItem.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+let cols = [];
+for (let i = 0; i < 200 && cols.length !== 3; i++) {
+  cols = [...container.querySelectorAll(".o_kanban_group")];
+  if (cols.length !== 3) await tick();
+}
+ok(cols.length === 3, "qc/dnd : regroupé par État -> 3 colonnes");
+ok(container.querySelectorAll(".o_kanban_quick_add").length === 3, "qc/dnd : bouton « + Créer » dans chaque colonne");
+
+const colByTitle = (title) =>
+  [...container.querySelectorAll(".o_kanban_group")].find((g) => g.querySelector(".o_kanban_group_title").textContent === title);
+const cardsIn = (col) => [...col.querySelectorAll(".o_kanban_record")];
+
+// quick create dans « Brouillon »
+colByTitle("Brouillon").querySelector(".o_kanban_quick_add").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+let qcInput = null;
+for (let i = 0; i < 200 && !qcInput; i++) {
+  qcInput = container.querySelector(".o_quick_create_input");
+  if (!qcInput) await tick();
+}
+ok(!!qcInput, "qc/dnd : champ de quick create affiché");
+// le focus est différé (setTimeout 0 après la bascule d'état) : polling
+let focused = false;
+for (let i = 0; i < 200 && !focused; i++) {
+  focused = document.activeElement === container.querySelector(".o_quick_create_input");
+  if (!focused) await tick();
+}
+ok(focused, "qc/dnd : champ de quick create focusé");
+// Échap ferme le champ
+qcInput.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+for (let i = 0; i < 200 && container.querySelector(".o_quick_create_input"); i++) await tick();
+ok(!container.querySelector(".o_quick_create_input"), "qc/dnd : Échap ferme le champ");
+colByTitle("Brouillon").querySelector(".o_kanban_quick_add").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+for (let i = 0; i < 200 && !container.querySelector(".o_quick_create_input"); i++) await tick();
+qcInput = container.querySelector(".o_quick_create_input");
+qcInput.value = "SO005";
+qcInput.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+let qcOk = false;
+for (let i = 0; i < 200 && !qcOk; i++) {
+  qcOk = cardsIn(colByTitle("Brouillon")).some((c) => c.textContent.includes("SO005"));
+  if (!qcOk) await tick();
+}
+ok(qcOk && cardsIn(colByTitle("Brouillon")).length === 3, "qc/dnd : carte SO005 créée dans « Brouillon » (3 cartes)");
+const createEntry = db.sync_queue.rows.find((r) => r.operation === "create");
+ok(!!createEntry && createEntry.payload.includes('"name":"SO005"') && createEntry.payload.includes('"state":"draft"'),
+   "qc/dnd : create en file (name SO005 + state draft)");
+
+// surlignage de la colonne cible pendant le glisser
+const so002 = cardsIn(colByTitle("Brouillon")).find((c) => c.textContent.includes("SO002"));
+so002.dispatchEvent(Object.assign(new dom.window.Event("dragstart", { bubbles: true }), { dataTransfer: { setData() {}, effectAllowed: null } }));
+colByTitle("Validé").dispatchEvent(new dom.window.Event("dragover", { bubbles: true, cancelable: true }));
+let highlighted = false;
+for (let i = 0; i < 200 && !highlighted; i++) {
+  highlighted = colByTitle("Validé").className.includes("o_kanban_drag_over");
+  if (!highlighted) await tick();
+}
+ok(highlighted, "qc/dnd : colonne cible surlignée (o_kanban_drag_over)");
+so002.dispatchEvent(new dom.window.Event("dragend", { bubbles: true }));
+for (let i = 0; i < 200 && colByTitle("Validé").className.includes("o_kanban_drag_over"); i++) await tick();
+ok(!colByTitle("Validé").className.includes("o_kanban_drag_over"), "qc/dnd : surlignage retiré au dragend");
+
+// DnD : SO002 (Brouillon) -> « Validé » (write + patch caches)
+so002.dispatchEvent(Object.assign(new dom.window.Event("dragstart", { bubbles: true }), { dataTransfer: { setData() {}, effectAllowed: null } }));
+colByTitle("Validé").dispatchEvent(Object.assign(new dom.window.Event("drop", { bubbles: true, cancelable: true }), { dataTransfer: { getData: () => "" } }));
+let moved = false;
+for (let i = 0; i < 200 && !moved; i++) {
+  moved = cardsIn(colByTitle("Validé")).some((c) => c.textContent.includes("SO002"));
+  if (!moved) await tick();
+}
+ok(moved && cardsIn(colByTitle("Brouillon")).length === 2, "qc/dnd : SO002 déplacée vers « Validé »");
+const writeEntry = db.sync_queue.rows.find((r) => r.operation === "write");
+ok(!!writeEntry && writeEntry.payload.includes('"id":2') && writeEntry.payload.includes('"state":"done"'),
+   "qc/dnd : write en file (id 2 -> state done)");
+const cached2 = db.record_cache.rows.find((r) => r.record_id === 2 && r.data.state === "done");
+ok(!!cached2, "qc/dnd : record_cache patché (SO002 -> done)");
+const listRow = db.list_cache.rows.find((r) => r.model === "crm.lead::lead_action");
+ok(listRow && listRow.records.find((r) => String(r.id) === "2" && r.state === "done"),
+   "qc/dnd : list_cache mis à jour (SO002 -> done)");
+
+// DnD d'une carte tmp (create EN FILE) : payload du create amendé, pas de write
+const writesBefore = db.sync_queue.rows.filter((r) => r.operation === "write").length;
+const so005 = cardsIn(colByTitle("Brouillon")).find((c) => c.textContent.includes("SO005"));
+so005.dispatchEvent(Object.assign(new dom.window.Event("dragstart", { bubbles: true }), { dataTransfer: { setData() {}, effectAllowed: null } }));
+colByTitle("Validé").dispatchEvent(Object.assign(new dom.window.Event("drop", { bubbles: true, cancelable: true }), { dataTransfer: { getData: () => "" } }));
+let movedTmp = false;
+for (let i = 0; i < 200 && !movedTmp; i++) {
+  movedTmp = cardsIn(colByTitle("Validé")).some((c) => c.textContent.includes("SO005"));
+  if (!movedTmp) await tick();
+}
+ok(movedTmp, "qc/dnd : carte tmp SO005 déplacée vers « Validé »");
+ok(db.sync_queue.rows.filter((r) => r.operation === "write").length === writesBefore,
+   "qc/dnd : aucun write pour un id tmp");
+ok(db.sync_queue.rows.find((r) => r.operation === "create").payload.includes('"state":"done"'),
+   "qc/dnd : payload du create amendé (state done)");
 
 // guard descripteur incomplet
 const container2 = document.createElement("div");

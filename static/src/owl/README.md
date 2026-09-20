@@ -163,6 +163,13 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   `mountKanbanView(..., groupBy)` construit les colonnes (en-tête
   libellé + badge compteur, « Aucun » pour les valeurs vides), template
   compilé à trois branches (groupé / vide / à plat).
+- ✅ Quick create + drag & drop kanban (itération 13) : le renderer
+  gère le geste (« + Créer » par colonne, cartes draggable, colonnes
+  surlignées o_kanban_drag_over) et délègue le modèle au contrôleur :
+  `onQuickCreate` (queueAction create + _rec_name hors ligne + valeur
+  de colonne, maj optimiste, cache liste, sync en ligne) et
+  `onRecordMove` (queueAction write, AMENDE du create en attente pour
+  les cartes tmp:<uuid>, patchCachedRecord).
 - ✅ Search avancé (itération 12) : `search/search_arch_parser.js` (arch
   `<search>` → filtres + filtres de groupe, tuples Python convertis en
   JSON), `search/search_utils.js` (`matchesSimpleDomain` partagé,

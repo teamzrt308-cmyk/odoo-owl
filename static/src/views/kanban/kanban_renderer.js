@@ -50,12 +50,94 @@ export class KanbanRenderer extends owl.Component {
     columns: { type: Array, optional: true },
     fieldsInfo: { type: Object },
     onCardClick: { type: Function },
+    // Drag & drop + quick create (itération 13) : le renderer gère le
+    // geste, le contrôleur possède le modèle (comme chez Odoo, où le
+    // renderer délègue au model via le contrôleur).
+    canDrag: { type: Boolean, optional: true },
+    onRecordMove: { type: Function, optional: true },
+    onQuickCreate: { type: Function, optional: true },
   };
 
   setup() {
     // Variables de scope historiques du moteur kanban (ex: les archs
     // contenant t-if="!selection_mode" continuent de fonctionner).
     this.selection_mode = false;
+    this.rootRef = owl.useRef("root");
+    // État interactif : colonne en création rapide, carte glissée,
+    // colonne cible surlignée.
+    this.state = owl.useState({
+      quickCreateColumn: null,
+      draggingRecordId: null,
+      dragOverColumn: null,
+    });
+  }
+
+  // ── Quick create (le create vit dans le contrôleur : onQuickCreate) ──
+
+  openQuickCreate(columnKey) {
+    this.state.quickCreateColumn = columnKey;
+    // L'input sera rendu par le re-render OWL (programmé sur rAF) :
+    // on attend son apparition, avec quelques relances.
+    this.focusQuickCreateInput(10);
+  }
+
+  focusQuickCreateInput(tries) {
+    const schedule = window.requestAnimationFrame || ((cb) => setTimeout(cb, 16));
+    schedule(() => {
+      const input = this.rootRef.el && this.rootRef.el.querySelector(".o_quick_create_input");
+      if (input) {
+        input.focus();
+        return;
+      }
+      if (tries > 0) this.focusQuickCreateInput(tries - 1);
+    });
+  }
+
+  closeQuickCreate() {
+    this.state.quickCreateColumn = null;
+  }
+
+  onQuickCreateKeydown(ev, columnKey) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      const name = ev.target.value.trim();
+      this.state.quickCreateColumn = null;
+      if (name && this.props.onQuickCreate) this.props.onQuickCreate(columnKey, name);
+    } else if (ev.key === "Escape") {
+      this.state.quickCreateColumn = null;
+    }
+  }
+
+  // ── Drag & drop (le write vit dans le contrôleur : onRecordMove) ──
+
+  onRecordDragStart(ev, recordId) {
+    this.state.draggingRecordId = recordId;
+    if (ev.dataTransfer) {
+      ev.dataTransfer.effectAllowed = "move";
+      try {
+        ev.dataTransfer.setData("text/plain", String(recordId));
+      } catch (e) {
+        // harnais de test sans dataTransfer complet
+      }
+    }
+  }
+
+  onRecordDragEnd() {
+    this.state.draggingRecordId = null;
+    this.state.dragOverColumn = null;
+  }
+
+  onColumnDragOver(ev, columnKey) {
+    if (this.state.draggingRecordId === null) return;
+    this.state.dragOverColumn = columnKey;
+  }
+
+  onColumnDrop(ev, columnKey) {
+    const recordId = this.state.draggingRecordId;
+    this.state.draggingRecordId = null;
+    this.state.dragOverColumn = null;
+    if (recordId === null || !this.props.onRecordMove) return;
+    this.props.onRecordMove(recordId, columnKey);
   }
 }
 
@@ -97,9 +179,12 @@ function buildKanbanColumns(records, groupBy, fieldsInfo) {
  * @param {Array} records - enregistrements bruts de la page courante
  * @param {Function} onCardClick - callback(recordId)
  * @param {string|null} [groupBy] - champ de regroupement (colonnes)
+ * @param {Object} [extras] - { canDrag, onRecordMove, onQuickCreate }
+ *   (branches groupées interactives ; le contrôleur kanban dédié les
+ *   fournit, l'ancienne branche kanban du ListController non)
  * @returns {Promise<{ destroy: Function }>}
  */
-export async function mountKanbanView(target, archXml, fieldsInfo, records, onCardClick, groupBy = null) {
+export async function mountKanbanView(target, archXml, fieldsInfo, records, onCardClick, groupBy = null, extras = {}) {
   const parsed = parseKanbanArch(archXml);
 
   if (parsed.error) {
@@ -130,6 +215,9 @@ export async function mountKanbanView(target, archXml, fieldsInfo, records, onCa
       columns,
       fieldsInfo,
       onCardClick,
+      canDrag: !!extras.canDrag,
+      onRecordMove: extras.onRecordMove || null,
+      onQuickCreate: extras.onQuickCreate || null,
     },
     { [parsed.templateName]: parsed.templateXml }
   );

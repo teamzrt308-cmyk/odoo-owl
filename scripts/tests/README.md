@@ -35,8 +35,10 @@ done
   parseur `<search>`, menus Filtres/Favoris, facettes, filtrage ET,
   restauration d'un favori sur mount frais, repli selection.
 - `test-kanban-controller-owl.mjs` : contrôleur kanban dédié +
-  colonnes de group by (itération 11) — default_group_by, menu Grouper
-  par, recherche, clic carte, switch list via dispatcher, destroy.
+  colonnes de group by (itération 11) + quick create et drag & drop
+  (itération 13) — default_group_by, menu Grouper par, recherche, clic
+  carte, switch list, « + Créer » (create en file + carte tmp), DnD
+  (write + patch caches, amende du create tmp), guard, destroy.
 - `test-kanban-owl.mjs` : pilote OWL de la vue kanban (arch → template).
 - `test-structure.mjs` : invariants d'architecture (registres, chemins,
   conventions façon Odoo 17, compilation du notebook dans le template

@@ -57,6 +57,29 @@ export async function getCachedListRecords(cacheKey) {
 }
 
 /**
+ * Met à jour (ou insère) un enregistrement dans la row de liste mise en
+ * cache -- utilisé par le quick create et le drag & drop du kanban pour
+ * que le réaffichage immédiat ET la prochaine visite hors ligne
+ * reflètent l'état local (le serveur rattrapera à la synchronisation).
+ */
+export async function upsertLocalListRecord(modelName, actionId, record) {
+  const key = buildListCacheKey(modelName, actionId, null);
+  const row = await db.list_cache.get(key);
+  const records = row && Array.isArray(row.records) ? [...row.records] : [];
+  const idx = records.findIndex((r) => String(r.id) === String(record.id));
+  if (idx >= 0) records[idx] = { ...records[idx], ...record };
+  else records.push(record);
+  await db.list_cache.put({
+    ...(row || {}),
+    model: key,
+    records,
+    total: records.length,
+    updated_at: new Date().toISOString(),
+  });
+  return records;
+}
+
+/**
  * Main entry point for loading a list
  */
 export async function getListRecordsSmart(
