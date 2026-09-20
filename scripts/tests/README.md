@@ -29,6 +29,7 @@ done
   pivot → destroy).
 - `test-kanban-owl.mjs` : pilote OWL de la vue kanban (arch → template).
 - `test-structure.mjs` : invariants d'architecture (registres, chemins,
-  conventions façon Odoo 17, compilation du notebook dans le template form).
+  conventions façon Odoo 17, compilation du notebook dans le template
+  form, composants ControlPanel/Breadcrumb).
 
 Ces tests utilisent un stub Dexie minimal et ne touchent jamais le réseau.

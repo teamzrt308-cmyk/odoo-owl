@@ -27,13 +27,15 @@ import { formatCellValue } from "./list_renderer_utils.js";
 import { renderListView } from "./list_renderer.js";
 import { mountKanbanView } from "../kanban/kanban_renderer.js";
 import { renderPurchaseDashboard, buildPurchaseDashboardDomain } from "../purchase_dashboard.js";
-import { buildControlPanel, renderViewSwitcherButtons } from "../../search/control_panel/control_panel.js";
+import { ControlPanel } from "../../search/control_panel/control_panel.js";
 import { filterByRecordRule } from "../../model/rules_engine/rules_engine.js";
 import { mountOwlApp } from "../../owl/app.js";
 
 const PAGE_SIZE = 20;
 
 export class ListController extends owl.Component {
+  static components = { ControlPanel };
+
   static props = {
     params: { type: Object, optional: true },
     env: { optional: true },
@@ -41,14 +43,36 @@ export class ListController extends owl.Component {
 
   static template = owl.xml`
     <div class="o_list_controller d-flex flex-column h-100">
-      <div t-ref="controlPanelHost"/>
+      <ControlPanel display="cpDisplay" breadcrumb="cpBreadcrumb" pager="cpPager" views="cpViews"
+                    onNew="onNewClick" onSearch="onSearchQuery" onPage="onPageClick" onSwitch="onSwitchView"/>
       <div t-ref="statusHost"/>
       <div t-ref="dashboardHost"/>
       <div t-ref="listHost"/>
     </div>`;
 
+  /**
+   * Props calculées du ControlPanel, lues dans l'état réactif ui (les
+   * closures de setup() y écrivent ; le template du contrôleur les y lit).
+   */
+  get cpBreadcrumb() {
+    return {
+      listLabel: (this.ui && this.ui.listLabel) || null,
+      recordLabel: (this.ui && this.ui.recordLabel) || "",
+    };
+  }
+
+  get cpPager() {
+    return this.ui && this.ui.pagerVisible ? this.ui.pager : null;
+  }
+
+  get cpViews() {
+    return {
+      available: (this.ui && this.ui.availableViews) || [],
+      current: (this.ui && this.ui.currentView) || "list",
+    };
+  }
+
   setup() {
-    this.controlPanelHostRef = owl.useRef("controlPanelHost");
     this.statusHostRef = owl.useRef("statusHost");
     this.dashboardHostRef = owl.useRef("dashboardHost");
     this.listHostRef = owl.useRef("listHost");
@@ -68,7 +92,6 @@ export class ListController extends owl.Component {
     let currentModelViews = null;
     let currentViewFieldsInfo = null;
     let activeDashboardFilter = null;
-    let searchDebounceTimer = null;
     // Vue actuellement montée dans la zone de liste (handle { destroy }
     // pour le renderer OWL kanban, élément DOM pour le renderer liste).
     let currentViewHandle = null;
@@ -76,38 +99,40 @@ export class ListController extends owl.Component {
     // mount OWL asynchrone (kanban) ne doivent pas laisser deux vues vivres.
     let renderToken = 0;
 
-    // --- Construction of the control panel specific to this view ---
-    const cp = buildControlPanel({
+    // --- Control panel OWL : état réactif + callbacks (le debounce de
+    // recherche vit désormais dans le composant ControlPanel) ---
+    self.cpDisplay = {
       withNewButton: true,
       withSearch: true,
       withPager: true,
       withViewSwitcher: true,
       withOptionsGear: true,
+    };
+    self.ui = owl.useState({
+      listLabel: label || null,
+      recordLabel: label || model,
+      pager: { page: 0, pageSize: PAGE_SIZE, total: 0 },
+      pagerVisible: true,
+      availableViews: [],
+      currentView: view,
     });
-
-    cp.breadcrumbCurrent.textContent = label || model;
-
-    cp.newBtn.addEventListener("click", () => {
+    self.onNewClick = () => {
       env.doAction({ tag: "form_view", module, model, actionId, isNew: true });
-    });
-
-    cp.searchInput.addEventListener("input", () => {
-      clearTimeout(searchDebounceTimer);
-      const query = cp.searchInput.value;
-      searchDebounceTimer = setTimeout(() => {
-        searchQuery = query;
-        applySearchFilter();
-        currentPage = 0;
-        renderCurrentPage();
-      }, 300);
-    });
-
-    cp.pagerPrevBtn.addEventListener("click", () => {
-      if (currentPage > 0) { currentPage--; renderCurrentPage(); }
-    });
-    cp.pagerNextBtn.addEventListener("click", () => {
-      if ((currentPage + 1) * PAGE_SIZE < allRecords.length) { currentPage++; renderCurrentPage(); }
-    });
+    };
+    self.onSearchQuery = (query) => {
+      searchQuery = query;
+      applySearchFilter();
+      currentPage = 0;
+      renderCurrentPage();
+    };
+    self.onPageClick = (delta) => {
+      if (delta < 0 && currentPage > 0) { currentPage--; renderCurrentPage(); }
+      if (delta > 0 && (currentPage + 1) * PAGE_SIZE < allRecords.length) { currentPage++; renderCurrentPage(); }
+    };
+    // Hook rempli par start() (onViewSwitch y est défini, après
+    // résolution du manifest) -- voir plus bas.
+    let viewSwitchHandler = null;
+    self.onSwitchView = (viewType) => { if (viewSwitchHandler) viewSwitchHandler(viewType); };
 
     // Status bar
     const statusEl = document.createElement("div");
@@ -153,17 +178,13 @@ export class ListController extends owl.Component {
       return false;
     }
 
-    function updatePagerDisplay() {
-      const total = allRecords.length;
-      const start = currentPage * PAGE_SIZE;
-      if (total === 0) {
-        cp.pagerEl.style.setProperty("display", "none", "important");
-        return;
-      }
-      cp.pagerEl.style.setProperty("display", "flex", "important");
-      cp.pagerInfoEl.textContent = `${start + 1}-${Math.min(start + PAGE_SIZE, total)} / ${total}`;
-      cp.pagerPrevBtn.disabled = currentPage === 0;
-      cp.pagerNextBtn.disabled = start + PAGE_SIZE >= total;
+    /**
+     * Synchronise l'état réactif du pager -- le compteur et les
+     * disabled sont calculés par le composant ControlPanel (props).
+     */
+    function syncPager() {
+      self.ui.pager.page = currentPage;
+      self.ui.pager.total = allRecords.length;
     }
 
     function destroyCurrentView() {
@@ -223,7 +244,7 @@ export class ListController extends owl.Component {
         listHost.appendChild(viewEl);
       }
 
-      updatePagerDisplay();
+      syncPager();
     }
 
     async function start() {
@@ -246,13 +267,16 @@ export class ListController extends owl.Component {
         const availableViews = ["list", "kanban", "pivot", "graph"].filter((v) => currentModelViews[v]);
         function onViewSwitch(viewType) {
           currentView = viewType;
-          renderViewSwitcherButtons(cp.viewSwitcherEl, availableViews, currentView, onViewSwitch);
+          self.ui.availableViews = availableViews;
+          self.ui.currentView = currentView;
           renderCurrentPage();
         }
-        renderViewSwitcherButtons(cp.viewSwitcherEl, availableViews, currentView, onViewSwitch);
+        viewSwitchHandler = onViewSwitch;
+        self.ui.availableViews = availableViews;
+        self.ui.currentView = currentView;
 
         if (currentView === "pivot" || currentView === "graph") {
-          cp.pagerEl.style.setProperty("display", "none", "important");
+          self.ui.pagerVisible = false;
           const placeholder = document.createElement("div");
           placeholder.className = "text-center text-muted p-5";
           placeholder.textContent = `Vue ${currentView === "pivot" ? "Pivot" : "Graphique"} : à venir.`;
@@ -300,7 +324,6 @@ export class ListController extends owl.Component {
 
     // Zones du template OWL + démarrage du flux de chargement.
     owl.onMounted(() => {
-      self.controlPanelHostRef.el.appendChild(cp.el);
       self.statusHostRef.el.appendChild(statusEl);
       start();
     });
@@ -308,7 +331,6 @@ export class ListController extends owl.Component {
     // Destruction : debounce de recherche + vue actuellement montée
     // (renderer OWL kanban ou renderer liste vanilla).
     owl.onWillDestroy(() => {
-      clearTimeout(searchDebounceTimer);
       destroyCurrentView();
     });
   }

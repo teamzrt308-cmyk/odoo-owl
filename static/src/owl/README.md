@@ -142,7 +142,17 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   logique hors ligne (pagination, recherche, view-switcher, dashboard
   achats, record rules) vit dans setup(), cleanup garanti par
   onWillDestroy.
-- ⏳ Reste : control_panel OWL (breadcrumb/search/pager encore
-  générés en DOM vanilla par buildControlPanel).
+- ✅ `search/control_panel/control_panel.js` : le ControlPanel est un
+  composant OWL embeddé dans les templates des contrôleurs (static
+  components), alimenté par props -- `display` (blocs affichés, comme
+  le prop display natif), `breadcrumb` (composant Breadcrumb,
+  webclient/breadcrumb/, slots pour indicateur d'enregistrement et
+  engrenage), `pager` ({page, pageSize, total} -- compteur et disabled
+  calculés par le composant) et `views` (view switcher). Le debounce
+  de recherche (300ms) vit dans le composant ; les interactions
+  remontent par callbacks (onNew/onSearch/onPage/onSwitch/onSave/
+  onUndo). buildControlPanel() vanilla supprimé.
+- ✅ Fin de la migration : toutes les couches (champs, renderers,
+  contrôleurs, control panel) sont rendues par OWL.
 
 

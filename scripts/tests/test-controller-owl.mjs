@@ -172,8 +172,15 @@ ok(!!container.querySelector(".o_control_panel"), "ctrl : control panel présent
 ok(container.querySelector("#field-name").value === "SO017", "ctrl : valeurs du record chargées depuis le cache hors ligne");
 ok(container.querySelector("#field-partner_id").value === "Alice", "ctrl : tuple m2o résolu");
 ok(container.querySelector("#status-msg").textContent.includes("hors-ligne"), "ctrl : statut « mode hors-ligne »");
-ok(container.querySelector(".o_control_panel .breadcrumb-current, .o_control_panel [class*=breadcrumb]").textContent.includes("SO017") ||
-   container.textContent.includes("SO017"), "ctrl : fil d'ariane = nom du record");
+// Le fil d'Ariane est mis à jour par une mutation d'état réactif APRÈS
+// le chargement (re-render OWL asynchrone) : on attend son application.
+let bcEl = null;
+for (let i = 0; i < 200; i++) {
+  bcEl = container.querySelector(".o_control_panel .breadcrumb-current, .o_control_panel [class*=breadcrumb]");
+  if (bcEl && bcEl.textContent.includes("SO017")) break;
+  await tick();
+}
+ok(bcEl && bcEl.textContent.includes("SO017"), "ctrl : fil d'ariane = nom du record");
 
 // ── 3. Sauvegarde hors ligne -> file de sync ──
 const nameInput = container.querySelector("#field-name");

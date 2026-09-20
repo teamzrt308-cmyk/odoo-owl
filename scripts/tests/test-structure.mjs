@@ -53,11 +53,15 @@ ok(!parsed.error && parsed.formRoot.tagName === "form", "parseFormViewArch : arc
 const badParsed = parseFormViewArch("<not-a-form><x/></not-a-form>");
 ok(!!badParsed.error, "parseFormViewArch : sans <form> -> erreur explicite");
 
-// --- 3. Breadcrumb extrait + control panel ---
-const { buildControlPanel } = await import(REPO + "/static/src/search/control_panel/control_panel.js");
-const cp = buildControlPanel({ withOptionsGear: true, withRecordStatusIcons: true });
-ok(cp.breadcrumbListItem && cp.breadcrumbListLink && cp.breadcrumbCurrent, "control panel -> éléments breadcrumb exposés");
-ok(cp.breadcrumbCurrent.parentElement.querySelector(".fa-cog"), "engrenage options rattaché à l'item courant");
+// --- 3. Control panel + breadcrumb OWL (itération 7) ---
+const cpModule = await import(REPO + "/static/src/search/control_panel/control_panel.js");
+const bcModule = await import(REPO + "/static/src/webclient/breadcrumb/breadcrumb.js");
+ok(cpModule.ControlPanel && cpModule.ControlPanel.name === "ControlPanel", "control panel -> composant OWL ControlPanel");
+ok(bcModule.Breadcrumb && bcModule.Breadcrumb.name === "Breadcrumb", "webclient/breadcrumb -> composant OWL Breadcrumb");
+ok(cpModule.ControlPanel.components && cpModule.ControlPanel.components.Breadcrumb === bcModule.Breadcrumb,
+   "ControlPanel embarque Breadcrumb (static components)");
+// Le comportement réel (save/undo, engrenage, pager, switcher) est
+// couvert de bout en bout par test-controller-owl / test-list-controller-owl.
 
 // --- 4. Widget statusbar (views/fields/statusbar/) ---
 const { renderStatusbarField } = await import(REPO + "/static/src/views/fields/statusbar/statusbar.js");

@@ -37,10 +37,12 @@ import {
   amendPendingCreate,
   getSyncQueueEntry,
 } from "../../core/network/rpc_service.js";
-import { buildControlPanel } from "../../search/control_panel/control_panel.js";
+import { ControlPanel } from "../../search/control_panel/control_panel.js";
 import { mountOwlApp } from "../../owl/app.js";
 
 export class FormController extends owl.Component {
+  static components = { ControlPanel };
+
   static props = {
     params: { type: Object, optional: true },
     env: { optional: true },
@@ -48,13 +50,23 @@ export class FormController extends owl.Component {
 
   static template = owl.xml`
     <div class="o_form_controller d-flex flex-column h-100">
-      <div t-ref="controlPanelHost"/>
+      <ControlPanel display="cpDisplay" breadcrumb="cpBreadcrumb"
+                    onSave="onSaveClick" onUndo="onUndoClick" onBreadcrumbList="onBreadcrumbList"/>
       <div t-ref="statusHost"/>
       <div t-ref="formHost"/>
     </div>`;
 
+  /**
+   * Props calculées du ControlPanel, lues dans l'état réactif ui.
+   */
+  get cpBreadcrumb() {
+    return {
+      listLabel: (this.ui && this.ui.listLabel) || null,
+      recordLabel: (this.ui && this.ui.recordLabel) || "",
+    };
+  }
+
   setup() {
-    this.controlPanelHostRef = owl.useRef("controlPanelHost");
     this.statusHostRef = owl.useRef("statusHost");
     this.formHostRef = owl.useRef("formHost");
 
@@ -81,26 +93,19 @@ export class FormController extends owl.Component {
     let archXml = null;
     let currentSecurityContext = null;
 
-    const cp = buildControlPanel({ withRecordStatusIcons: true });
-
-    if (listLabel) {
-      cp.breadcrumbListItem.classList.remove("d-none");
-      cp.breadcrumbListLink.textContent = listLabel;
-      cp.breadcrumbListLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        env.goBack();
-      });
-    }
+    // Control panel OWL : état réactif (fil d'Ariane) + callbacks.
+    self.cpDisplay = { withRecordStatusIcons: true };
+    self.ui = owl.useState({ listLabel: listLabel || null, recordLabel: "" });
+    self.onSaveClick = () => saveRecord();
+    self.onUndoClick = () => {
+      env.doAction({ tag: "form_view", module, model, id: currentRecordId, actionId, listLabel }, { replace: true });
+    };
+    self.onBreadcrumbList = () => env.goBack();
 
     const statusEl = document.createElement("div");
     statusEl.id = "status-msg";
     statusEl.className = "text-muted small px-3 py-1";
     statusEl.textContent = "Chargement du formulaire...";
-
-    cp.cloudBtn.addEventListener("click", saveRecord);
-    cp.undoBtn.addEventListener("click", () => {
-      env.doAction({ tag: "form_view", module, model, id: currentRecordId, actionId, listLabel }, { replace: true });
-    });
 
     /**
    * Monte (ou re-monte) le renderer OWL du formulaire -- même rôle que
@@ -212,7 +217,7 @@ export class FormController extends owl.Component {
         statusEl.textContent = navigator.onLine ? "" : "Mode hors-ligne — données mises en cache.";
 
         const recordLabel = currentRecordId ? initialValues.name || `#${currentRecordId}` : "Nouveau";
-        cp.breadcrumbCurrent.textContent = recordLabel;
+        self.ui.recordLabel = recordLabel;
       } catch (err) {
         console.error(err);
         statusEl.textContent = "Erreur : " + err.message;
@@ -241,7 +246,7 @@ export class FormController extends owl.Component {
 
     await mountFormInto(freshRecord);
 
-    cp.breadcrumbCurrent.textContent = freshRecord.name || `#${currentRecordId}`;
+    self.ui.recordLabel = freshRecord.name || `#${currentRecordId}`;
   }
 
     /**
@@ -525,7 +530,6 @@ export class FormController extends owl.Component {
 
     // Zones du template OWL + démarrage du flux de chargement.
     owl.onMounted(() => {
-      self.controlPanelHostRef.el.appendChild(cp.el);
       self.statusHostRef.el.appendChild(statusEl);
       start();
     });
