@@ -15,6 +15,7 @@
  */
 
 import { registry } from "../core/registry.js";
+import { mountOwlApp } from "../owl/app.js";
 
 // Effets de bord : enregistrement des descripteurs de vues.
 import "./form/form_view.js";
@@ -50,7 +51,19 @@ export async function mountView(container, params, env) {
     return () => {};
   }
 
-  return viewsRegistry.get(viewType).mount(container, params, env);
+  const descriptor = viewsRegistry.get(viewType);
+
+  // Chez Odoo, le descripteur de vue expose son composant Controller
+  // (form_view.js : { Controller: FormController }) -- le dispatcher le
+  // monte avec les params de l'action + l'env. Les descripteurs encore
+  // impératifs ({ mount }, ex: list/kanban en attendant leur migration)
+  // gardent leur contrat historique.
+  if (descriptor.Controller) {
+    const { destroy } = await mountOwlApp(descriptor.Controller, container, { params, env });
+    return destroy;
+  }
+
+  return descriptor.mount(container, params, env);
 }
 
 /**

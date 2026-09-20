@@ -4,7 +4,7 @@ Suites de non-régression du moteur (Node + jsdom). Exécution :
 
 ```bash
 cd scripts/tests && npm install   # une seule fois (jsdom)
-for t in test-fields-owl test-kanban-owl test-structure test-relational-owl test-form-owl; do
+for t in test-fields-owl test-kanban-owl test-structure test-relational-owl test-form-owl test-controller-owl; do
   node $t.mjs
 done
 ```
@@ -20,6 +20,9 @@ done
   depuis l'arch (scaffolding, groups, notebook réactif, h1, button_box),
   header type="object", statusbar, emplacements de champs (contrat
   sérialiseur), re-mount + destroy.
+- `test-controller-owl.mjs` : contrôleur form OWL (itération 5) —
+  descripteur { Controller }, dispatch view.js, parcours hors ligne
+  complet (caches → rendu → sauvegarde en file → action objet → destroy).
 - `test-kanban-owl.mjs` : pilote OWL de la vue kanban (arch → template).
 - `test-structure.mjs` : invariants d'architecture (registres, chemins,
   conventions façon Odoo 17, compilation du notebook dans le template form).

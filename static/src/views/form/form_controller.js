@@ -1,6 +1,18 @@
 /**
  * views/form/form_controller.js
  * ================================
+ * Contrôleur de la vue formulaire -- composant OWL, même architecture
+ * qu'Odoo 17 : le descripteur de la vue (form_view.js) expose
+ * { Controller: FormController } et c'est le dispatcher views/view.js
+ * qui monte le composant (props : params de l'action + env du webclient).
+ *
+ * Le template OWL du contrôleur porte les trois zones de la vue
+ * (control panel, statut, hôte du renderer). La logique métier hors
+ * ligne -- chargement du record, file de sync, règles document, ledger
+ * local, actions objet -- vit dans des closures de setup(), attachée
+ * aux zones par refs ; la migration de CHAQUE brique vers l'OWL (control
+ * panel, barre de statut) se fera par la suite sans changer ce contrat.
+ *
  * Manages the complete load/render/save cycle for a single record, with
  * an offline-first sync queue.
  */
@@ -26,63 +38,71 @@ import {
   getSyncQueueEntry,
 } from "../../core/network/rpc_service.js";
 import { buildControlPanel } from "../../search/control_panel/control_panel.js";
+import { mountOwlApp } from "../../owl/app.js";
 
-/**
- * Mounts a form into the container and returns a cleanup
- * (destroy) function. Called by views/view.js.
- */
-export async function mountFormController(container, params, env) {
-  const { module, model, id, isNew, actionId, listLabel } = params;
+export class FormController extends owl.Component {
+  static props = {
+    params: { type: Object, optional: true },
+    env: { optional: true },
+  };
 
-  if (!module || !model) {
-    console.warn("[form_controller] descripteur incomplet, retour à l'accueil :", params);
-    env.doAction("home_menu", { replace: true, clearStack: true });
-    return () => {};
-  }
+  static template = owl.xml`
+    <div class="o_form_controller d-flex flex-column h-100">
+      <div t-ref="controlPanelHost"/>
+      <div t-ref="statusHost"/>
+      <div t-ref="formHost"/>
+    </div>`;
 
-  const apiKey = getApiKey();
+  setup() {
+    this.controlPanelHostRef = owl.useRef("controlPanelHost");
+    this.statusHostRef = owl.useRef("statusHost");
+    this.formHostRef = owl.useRef("formHost");
 
-  let currentRecordId = id ? parseInt(id, 10) : null;
-  let pendingCreateUuid = null;
-  let currentReferenceWriteDate = null;
-  let currentReferenceValues = {};
-  let currentContainer = null;
-  let currentFieldsInfo = null;
-  let cleanupRules = () => {};
-  let rendererDestroy = null;
-  let rulesSyncTimer = null;
+    const self = this;
+    const params = this.props.params || {};
+    const env = this.props.env;
+    const { module, model, id, isNew, actionId, listLabel } = params;
 
-  // NEW — promoted to closure variables (previously: local to the try
-  // block) so that saveRecord() can rebuild the form after a
-  // successful write, without relying on a full view reload.
-  let archXml = null;
-  let currentSecurityContext = null;
+    const apiKey = getApiKey();
 
-  const cp = buildControlPanel({ withRecordStatusIcons: true });
-  container.appendChild(cp.el);
+    let currentRecordId = id ? parseInt(id, 10) : null;
+    let pendingCreateUuid = null;
+    let currentReferenceWriteDate = null;
+    let currentReferenceValues = {};
+    let currentContainer = null;
+    let currentFieldsInfo = null;
+    let cleanupRules = () => {};
+    let rendererDestroy = null;
+    let rulesSyncTimer = null;
 
-  if (listLabel) {
-    cp.breadcrumbListItem.classList.remove("d-none");
-    cp.breadcrumbListLink.textContent = listLabel;
-    cp.breadcrumbListLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      env.goBack();
+    // NEW — promoted to closure variables (previously: local to the try
+    // block) so that saveRecord() can rebuild the form after a
+    // successful write, without relying on a full view reload.
+    let archXml = null;
+    let currentSecurityContext = null;
+
+    const cp = buildControlPanel({ withRecordStatusIcons: true });
+
+    if (listLabel) {
+      cp.breadcrumbListItem.classList.remove("d-none");
+      cp.breadcrumbListLink.textContent = listLabel;
+      cp.breadcrumbListLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        env.goBack();
+      });
+    }
+
+    const statusEl = document.createElement("div");
+    statusEl.id = "status-msg";
+    statusEl.className = "text-muted small px-3 py-1";
+    statusEl.textContent = "Chargement du formulaire...";
+
+    cp.cloudBtn.addEventListener("click", saveRecord);
+    cp.undoBtn.addEventListener("click", () => {
+      env.doAction({ tag: "form_view", module, model, id: currentRecordId, actionId, listLabel }, { replace: true });
     });
-  }
 
-  if (navigator.onLine) {
-    syncPendingActions()
-      .catch((err) => console.warn("Rattrapage synchro échoué:", err))
-      .finally(() => bus.trigger("sync:updated"));
-  }
-
-  const statusEl = document.createElement("div");
-  statusEl.id = "status-msg";
-  statusEl.className = "text-muted small px-3 py-1";
-  statusEl.textContent = "Chargement du formulaire...";
-  container.appendChild(statusEl);
-
-  /**
+    /**
    * Monte (ou re-monte) le renderer OWL du formulaire -- même rôle que
    * les trois anciens blocs renderFormView() + replaceWith() (mount
    * initial, refresh après write, rebuild optimiste), désormais
@@ -92,7 +112,7 @@ export async function mountFormController(container, params, env) {
    * `ready` garantit que toutes les saisies existent avant la première
    * passe de règles document.
    */
-  async function mountFormInto(values, { insertBeforeStatus = false } = {}) {
+  async function mountFormInto(values) {
     cleanupRules();
     if (rendererDestroy) {
       try {
@@ -104,10 +124,10 @@ export async function mountFormController(container, params, env) {
     }
 
     const host = document.createElement("div");
-    if (insertBeforeStatus || !currentContainer) {
-      container.insertBefore(host, statusEl);
-    } else {
+    if (currentContainer) {
       currentContainer.replaceWith(host);
+    } else {
+      self.formHostRef.el.appendChild(host);
     }
 
     const { el, ready, destroy } = await mountFormRenderer(
@@ -131,64 +151,75 @@ export async function mountFormController(container, params, env) {
     return el;
   }
 
-  try {
-    const manifest = await getModuleManifest(module, apiKey, CONFIG.ODOO_BASE_URL);
-    const modelViews = resolveModelViews(manifest, model, actionId);
-    const fieldsInfo = manifest.fields[model];
-
-    if (!modelViews || !modelViews.form || !fieldsInfo) {
-      statusEl.textContent = `Aucune vue formulaire disponible pour "${model}".`;
-      return () => {};
-    }
-
-    archXml = modelViews.form.arch;
-
-    const relationsToPreload = new Set();
-    for (const finfo of Object.values(fieldsInfo)) {
-      if ((finfo.type === "many2one" || finfo.type === "many2many") && finfo.relation) {
-        relationsToPreload.add(finfo.relation);
+    async function start() {
+      if (!module || !model) {
+        console.warn("[form_controller] descripteur incomplet, retour à l'accueil :", params);
+        env.doAction("home_menu", { replace: true, clearStack: true });
+        return;
       }
-      if (finfo.type === "one2many" && finfo.sub_fields) {
-        for (const subInfo of Object.values(finfo.sub_fields)) {
-          if ((subInfo.type === "many2one" || subInfo.type === "many2many") && subInfo.relation) {
-            relationsToPreload.add(subInfo.relation);
+
+      if (navigator.onLine) {
+        syncPendingActions()
+          .catch((err) => console.warn("Rattrapage synchro échoué:", err))
+          .finally(() => bus.trigger("sync:updated"));
+      }
+
+      try {
+        const manifest = await getModuleManifest(module, apiKey, CONFIG.ODOO_BASE_URL);
+        const modelViews = resolveModelViews(manifest, model, actionId);
+        const fieldsInfo = manifest.fields[model];
+
+        if (!modelViews || !modelViews.form || !fieldsInfo) {
+          statusEl.textContent = `Aucune vue formulaire disponible pour "${model}".`;
+          return;
+        }
+        archXml = modelViews.form.arch;
+
+        // Préchargement des caches de référence (relationnels des champs
+        // du formulaire ET des sous-champs one2many) -- lecture locale en
+        // mode hors-ligne.
+        const relationsToPreload = new Set();
+        for (const finfo of Object.values(fieldsInfo)) {
+          if ((finfo.type === "many2one" || finfo.type === "many2many") && finfo.relation) {
+            relationsToPreload.add(finfo.relation);
+          }
+          if (finfo.type === "one2many" && finfo.sub_fields) {
+            for (const subInfo of Object.values(finfo.sub_fields)) {
+              if ((subInfo.type === "many2one" || subInfo.type === "many2many") && subInfo.relation) {
+                relationsToPreload.add(subInfo.relation);
+              }
+            }
           }
         }
+        for (const relModel of relationsToPreload) {
+          await getReferenceRecordsSmart(relModel, apiKey, CONFIG.ODOO_BASE_URL);
+        }
+
+        let initialValues = {};
+        if (currentRecordId) {
+          initialValues = await getRecordSmart(model, currentRecordId, apiKey, CONFIG.ODOO_BASE_URL);
+          currentReferenceWriteDate = initialValues.__reference_write_date__ || null;
+          const { __reference_write_date__, ...cleanValues } = initialValues;
+          currentReferenceValues = cleanValues;
+        }
+
+        const securityInfo = await getSecurityInfo(model);
+        currentSecurityContext = securityInfo || { is_admin: false };
+
+        currentFieldsInfo = fieldsInfo;
+        await mountFormInto(initialValues);
+
+        statusEl.textContent = navigator.onLine ? "" : "Mode hors-ligne — données mises en cache.";
+
+        const recordLabel = currentRecordId ? initialValues.name || `#${currentRecordId}` : "Nouveau";
+        cp.breadcrumbCurrent.textContent = recordLabel;
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Erreur : " + err.message;
       }
     }
-    for (const relModel of relationsToPreload) {
-      await getReferenceRecordsSmart(relModel, apiKey, CONFIG.ODOO_BASE_URL);
-    }
 
-    let initialValues = {};
-    if (currentRecordId) {
-      initialValues = await getRecordSmart(model, currentRecordId, apiKey, CONFIG.ODOO_BASE_URL);
-      currentReferenceWriteDate = initialValues.__reference_write_date__ || null;
-      const { __reference_write_date__, ...cleanValues } = initialValues;
-      currentReferenceValues = cleanValues;
-    }
-
-    const securityInfo = await getSecurityInfo(model);
-    currentSecurityContext = securityInfo || { is_admin: false };
-
-    currentFieldsInfo = fieldsInfo;
-    await mountFormInto(initialValues, { insertBeforeStatus: true });
-
-    cp.cloudBtn.addEventListener("click", saveRecord);
-    cp.undoBtn.addEventListener("click", () => {
-      env.doAction({ tag: "form_view", module, model, id: currentRecordId, actionId, listLabel }, { replace: true });
-    });
-
-    statusEl.textContent = navigator.onLine ? "" : "Mode hors-ligne — données mises en cache.";
-
-    const recordLabel = currentRecordId ? initialValues.name || `#${currentRecordId}` : "Nouveau";
-    cp.breadcrumbCurrent.textContent = recordLabel;
-  } catch (err) {
-    console.error(err);
-    statusEl.textContent = "Erreur : " + err.message;
-  }
-
-  /**
+    /**
    * NEW — rebuilds the form from fresh server data.
    * Necessary after a successful write: one2many lines
    * created via this write receive a real server-side ID that
@@ -213,7 +244,7 @@ export async function mountFormController(container, params, env) {
     cp.breadcrumbCurrent.textContent = freshRecord.name || `#${currentRecordId}`;
   }
 
-  /**
+    /**
    * NEW — branche runDocumentRules() (compute/onchange en cascade sur
    * racine + lignes, ex: amount_total = f(order_line.price_total)) sur le
    * formulaire réellement affiché. Jusqu'ici cette fonction du moteur
@@ -285,7 +316,7 @@ export async function mountFormController(container, params, env) {
     }
   }
 
-  /**
+    /**
    * NEW — applique une mise à jour OPTIMISTE locale (voir
    * rules/stock_rules.js::optimisticState) suite à un clic sur un bouton
    * objet, sans attendre la synchronisation. Re-rend tout le formulaire
@@ -319,7 +350,7 @@ export async function mountFormController(container, params, env) {
     await mountFormInto(patchedRecord);
   }
 
-  /**
+    /**
    * NEW — handles a click on a type="object" header button (e.g.
    * action_confirm, action_cancel, action_lock...). Follows the exact
    * same pattern already used by saveRecord(): always queue locally
@@ -407,7 +438,7 @@ export async function mountFormController(container, params, env) {
     }
   }
 
-  async function saveRecord() {
+    async function saveRecord() {
     if (!currentContainer || !currentFieldsInfo) return;
     const formData = collectFormData(currentContainer, currentFieldsInfo);
 
@@ -492,9 +523,29 @@ export async function mountFormController(container, params, env) {
     }
   }
 
-  return () => {
-    clearTimeout(rulesSyncTimer);
-    cleanupRules();
-    if (rendererDestroy) rendererDestroy();
-  };
+    // Zones du template OWL + démarrage du flux de chargement.
+    owl.onMounted(() => {
+      self.controlPanelHostRef.el.appendChild(cp.el);
+      self.statusHostRef.el.appendChild(statusEl);
+      start();
+    });
+
+    // Destruction : timers, écouteurs live et app OWL du renderer.
+    owl.onWillDestroy(() => {
+      clearTimeout(rulesSyncTimer);
+      cleanupRules();
+      if (rendererDestroy) rendererDestroy();
+    });
+  }
+}
+
+/**
+ * Montage du contrôleur (contrat historique conservé : async, retourne
+ * la fonction destroy) -- appelé par views/view.js via le descripteur
+ * { Controller } de form_view.js, comme le webclient d'Odoo monte le
+ * composant Controller d'une vue.
+ */
+export async function mountFormController(container, params, env) {
+  const { destroy } = await mountOwlApp(FormController, container, { params, env });
+  return destroy;
 }

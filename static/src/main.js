@@ -16,7 +16,9 @@ import "./webclient/home_menu/home_menu.js";
 // le tableau one2many (sous-composants OWL par cellule, état réactif des
 // lignes) ; les vues kanban (kanban_arch_parser) et form
 // (form_arch_parser::buildFormTemplate) sont des composants OWL dont le
-// template est compilé depuis l'arch. Voir static/src/owl/README.md.
+// template est compilé depuis l'arch ; le contrôleur form est lui-même
+// un composant OWL monté par views/view.js via le descripteur
+// { Controller } de la vue. Voir static/src/owl/README.md.
 
 // Fusionné depuis core/browser/service_worker.js : chez Odoo l'enregistrement
 // du Service Worker se fait directement au boot, sans fichier dédié.

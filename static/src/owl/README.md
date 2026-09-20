@@ -127,7 +127,14 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
 - ✅ `views/kanban/kanban_renderer.js` : vue kanban rendue par un
   composant OWL dont le template est COMPILÉ depuis l'arch à chaque
   mount (`kanban_arch_parser.js`) -- même flux que le webclient natif.
-- ⏳ Reste : les contrôleurs (form_controller OWL, même flux que
-  list_controller).
+- ✅ `views/form/form_controller.js` : le CONTRÔLEUR form est un
+  composant OWL (`FormController`) -- le descripteur de la vue expose
+  `{ Controller }` (form_view.js, comme chez Odoo) et views/view.js
+  monte le composant avec les params de l'action + l'env. Le template
+  OWL porte les trois zones (control panel / statut / hôte renderer) ;
+  la logique hors ligne (sync, règles, ledger) vit dans setup() et le
+  cleanup est garanti par onWillDestroy.
+- ⏳ Reste : list_controller (encore impératif, même contrat),
+  control_panel OWL.
 
 
