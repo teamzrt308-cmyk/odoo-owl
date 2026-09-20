@@ -29,6 +29,9 @@ import { parseListArch } from "./list_arch_parser.js";
 import { mountKanbanView } from "../kanban/kanban_renderer.js";
 import { renderPurchaseDashboard, buildPurchaseDashboardDomain } from "../purchase_dashboard.js";
 import { ControlPanel } from "../../search/control_panel/control_panel.js";
+import { parseSearchArch } from "../../search/search_arch_parser.js";
+import { matchesSimpleDomain, applyFilters, buildSelectionFilters } from "../../search/search_utils.js";
+import { getSearchFavorites, saveSearchFavorite, deleteSearchFavorite, matchFavorite } from "../../search/search_favorites.js";
 import { filterByRecordRule } from "../../model/rules_engine/rules_engine.js";
 import { mountOwlApp } from "../../owl/app.js";
 
@@ -45,7 +48,9 @@ export class ListController extends owl.Component {
   static template = owl.xml`
     <div class="o_list_controller d-flex flex-column h-100">
       <ControlPanel display="cpDisplay" breadcrumb="cpBreadcrumb" pager="cpPager" views="cpViews" groups="cpGroups"
-                    onNew="onNewClick" onSearch="onSearchQuery" onPage="onPageClick" onSwitch="onSwitchView" onGroupBy="onGroupBySelect"/>
+                    filters="cpFilters" favorites="cpFavorites" query="cpQuery"
+                    onNew="onNewClick" onSearch="onSearchQuery" onPage="onPageClick" onSwitch="onSwitchView" onGroupBy="onGroupBySelect"
+                    onToggleFilter="onToggleFilter" onSaveFavorite="onSaveFavorite" onSelectFavorite="onSelectFavorite" onDeleteFavorite="onDeleteFavorite"/>
       <div t-ref="statusHost"/>
       <div t-ref="dashboardHost"/>
       <div t-ref="listHost"/>
@@ -84,6 +89,27 @@ export class ListController extends owl.Component {
     };
   }
 
+  get cpFilters() {
+    // Menu Filtres : candidats issus de l'arch <search> (ou dérivés des
+    // champs selection), actifs partagés par toutes les vues du modèle.
+    const ui = this.ui || {};
+    return { available: ui.filterCandidates || [], active: ui.activeFilters || [] };
+  }
+
+  get cpFavorites() {
+    const ui = this.ui || {};
+    const current = matchFavorite(ui.favorites || [], {
+      query: ui.searchQuery || "",
+      activeFilters: ui.activeFilters || [],
+      groupBy: ui.groupBy === undefined ? null : ui.groupBy,
+    });
+    return { available: ui.favorites || [], current: current ? current.name : null };
+  }
+
+  get cpQuery() {
+    return (this.ui && this.ui.searchQuery) || "";
+  }
+
   setup() {
     this.statusHostRef = owl.useRef("statusHost");
     this.dashboardHostRef = owl.useRef("dashboardHost");
@@ -104,6 +130,9 @@ export class ListController extends owl.Component {
     let currentModelViews = null;
     let currentViewFieldsInfo = null;
     let activeDashboardFilter = null;
+    // Défs des filtres (name -> {name,label,domain}) résolues par start()
+    // à partir de l'arch <search> ou des champs selection.
+    let filterDefsByName = {};
     // Vue actuellement montée dans la zone de liste (handle { destroy }
     // pour le renderer OWL kanban, élément DOM pour le renderer liste).
     let currentViewHandle = null;
@@ -120,6 +149,8 @@ export class ListController extends owl.Component {
       withViewSwitcher: true,
       withOptionsGear: true,
       withGroupBy: true,
+      withFilters: true,
+      withFavorites: true,
     };
     self.ui = owl.useState({
       listLabel: label || null,
@@ -130,12 +161,19 @@ export class ListController extends owl.Component {
       currentView: view,
       groupBy: params.groupBy || null,
       groupByCandidates: [],
+      // Search avancé (itération 12) : requête miroir (restauration de
+      // favori), filtres actifs, candidats et favoris du modèle.
+      searchQuery: "",
+      activeFilters: [],
+      filterCandidates: [],
+      favorites: [],
     });
     self.onNewClick = () => {
       env.doAction({ tag: "form_view", module, model, actionId, isNew: true });
     };
     self.onSearchQuery = (query) => {
       searchQuery = query;
+      self.ui.searchQuery = query;
       applySearchFilter();
       currentPage = 0;
       renderCurrentPage();
@@ -153,23 +191,46 @@ export class ListController extends owl.Component {
       currentPage = 0;
       renderCurrentPage();
     };
+    // --- Search avancé : filtres + favoris (itération 12) ---
+    self.onToggleFilter = (name) => {
+      const active = new Set(self.ui.activeFilters);
+      if (active.has(name)) active.delete(name);
+      else active.add(name);
+      self.ui.activeFilters = [...active];
+      currentPage = 0;
+      applySearchFilter();
+      renderCurrentPage();
+    };
+    self.onSaveFavorite = (name) => {
+      self.ui.favorites = saveSearchFavorite(model, {
+        name,
+        query: self.ui.searchQuery || "",
+        filters: [...self.ui.activeFilters],
+        groupBy: self.ui.groupBy === undefined ? null : self.ui.groupBy,
+      });
+    };
+    self.onSelectFavorite = (name) => {
+      const fav = (self.ui.favorites || []).find((f) => f.name === name);
+      if (!fav) return;
+      searchQuery = fav.query || "";
+      self.ui.searchQuery = searchQuery;
+      // Noms inconnus (favori obsolète) écartés pour ne pas afficher
+      // des facettes sans filtre résoluable.
+      self.ui.activeFilters = (fav.filters || []).filter((n) => !!filterDefsByName[n]);
+      const candidates = new Set((self.ui.groupByCandidates || []).map((c) => c.name));
+      self.ui.groupBy = fav.groupBy && candidates.has(fav.groupBy) ? fav.groupBy : null;
+      currentPage = 0;
+      applySearchFilter();
+      renderCurrentPage();
+    };
+    self.onDeleteFavorite = (name) => {
+      self.ui.favorites = deleteSearchFavorite(model, name);
+    };
 
     // Status bar
     const statusEl = document.createElement("div");
     statusEl.className = "text-muted small px-3 py-1";
     statusEl.textContent = "Chargement de la liste...";
-
-    function matchesSimpleDomain(record, domain) {
-      return domain.every(([field, op, value]) => {
-        const raw = record[field];
-        switch (op) {
-          case "=": return raw === value;
-          case "in": return Array.isArray(value) && value.includes(raw);
-          case "<": return raw !== undefined && raw !== false && raw < value;
-          default: return true;
-        }
-      });
-    }
 
     function applySearchFilter() {
       let filtered = allRecordsRaw;
@@ -180,6 +241,10 @@ export class ListController extends owl.Component {
         );
         filtered = filtered.filter((r) => matchesSimpleDomain(r, domain));
       }
+
+      // Menu Filtres (search avancé) : ET entre filtres actifs, comme
+      // le domaine de recherche natif.
+      filtered = applyFilters(filtered, filterDefsByName, self.ui.activeFilters);
 
       allRecords = searchQuery
         ? filtered.filter((r) => recordMatchesQuery(r, currentViewFieldsInfo || {}, searchQuery))
@@ -229,7 +294,8 @@ export class ListController extends owl.Component {
             currentModelViews.kanban.arch,
             currentViewFieldsInfo,
             pageRecords,
-            onRecordOpen
+            onRecordOpen,
+            self.ui.groupBy
           );
           if (token !== renderToken) {
             destroy(); // la page a de nouveau changé pendant le mount -> on jette le rendu
@@ -300,14 +366,39 @@ export class ListController extends owl.Component {
 
         // Candidats du menu Grouper par : colonnes de l'arch liste dont le
         // type est regroupable (char/selection/many2one/boolean).
+        let groupByCandidates = [];
         if (currentModelViews.list) {
           const listParsed = parseListArch(currentModelViews.list.arch, currentViewFieldsInfo);
           if (!listParsed.error) {
-            self.ui.groupByCandidates = listParsed.columns
+            groupByCandidates = listParsed.columns
               .filter((c) => ["char", "selection", "many2one", "boolean"].includes((currentViewFieldsInfo[c.field] || {}).type))
               .map((c) => ({ name: c.field, label: c.label }));
           }
         }
+
+        // --- Search avancé (itération 12) : l'arch <search> du manifest
+        // fournit filtres et filtres de groupe, comme chez Odoo ; sans
+        // arch, repli sur des filtres dérivés des champs selection.
+        let searchFilters = [];
+        if (currentModelViews.search && currentModelViews.search.arch) {
+          const searchParsed = parseSearchArch(currentModelViews.search.arch);
+          if (!searchParsed.error) {
+            searchFilters = searchParsed.filters;
+            const known = new Set(groupByCandidates.map((c) => c.name));
+            for (const gb of searchParsed.groupBys) {
+              if (!known.has(gb.name)) {
+                groupByCandidates.push({ name: gb.name, label: gb.label });
+              }
+            }
+          }
+        }
+        if (searchFilters.length === 0) {
+          searchFilters = buildSelectionFilters(currentViewFieldsInfo);
+        }
+        filterDefsByName = Object.fromEntries(searchFilters.map((f) => [f.name, f]));
+        self.ui.filterCandidates = searchFilters.map(({ name, label }) => ({ name, label }));
+        self.ui.groupByCandidates = groupByCandidates;
+        self.ui.favorites = getSearchFavorites(model);
         self.ui.currentView = currentView;
 
         if (currentView === "pivot" || currentView === "graph") {

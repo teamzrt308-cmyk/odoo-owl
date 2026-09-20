@@ -1,17 +1,17 @@
 # Alignement du moteur hors ligne sur Odoo 17 — état au 20/09/2026
 
 Comparaison couche par couche avec le webclient d'Odoo 17 (`web/static/src`).
-Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (2725d5d).
+Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 
 ---
 
 ## ✅ Terminé
 
 ### Socle technique
-- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v30).
+- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v35).
 - **Persistance hors ligne** : IndexedDB/Dexie — caches record/list/reference/catalog/manifest, file de sync (`rpc_service`), ledger local.
 - **Règles métier** : `model/rules_engine/` (onchange/compute génériques + spécifiques purchase/sale/stock, access, domain, default) portées de la logique serveur ; `core/py_js/` (evaluateSimpleCondition, isNodeVisible).
-- **Tests** : 7 suites jsdom versionnées (`scripts/tests/`, ~180 assertions), exécutables offline.
+- **Tests** : 10 suites jsdom versionnées (`scripts/tests/`, ~270 assertions), exécutables offline.
 
 ### Structure & flux (itération 1)
 - Registre `registry.category("views")` + dispatcher `views/view.js` (`resolveViewType` : view demandée → form si id/isNew → list) — même flux qu'Odoo (ActionService → registry views).
@@ -57,17 +57,37 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 - helpers partagés list/kanban : `groupLabel`, `recordMatchesQuery`
   (list_renderer_utils).
 
+### Search avancé : filtres + favoris (itération 12)
+- `search/search_arch_parser.js` : arch `<search>` → filtres (attribut
+  `domain`, quotes + tuples Python convertis en JSON) et filtres de
+  groupe (`context="{ 'group_by': 'x' }"`), comme le parseur natif ;
+- `search/search_utils.js` : `matchesSimpleDomain` (triples, ET
+  implicite, partagé avec le bandeau dashboard), `applyFilters` (ET
+  entre filtres actifs), `buildSelectionFilters` (repli sans arch
+  `<search>` : un filtre par valeur des champs selection) ;
+- `search/search_favorites.js` : favoris PAR MODÈLE dans le localStorage
+  (équivalent hors ligne d'ir.filters) + `matchFavorite` (favori
+  courant coché) ;
+- ControlPanel : menus **Filtres** (bascule, reste ouvert) et
+  **Favoris** (appliquer / supprimer / « Enregistrer la recherche
+  actuelle »), **facettes actives** retirables dans la barre de
+  recherche, restauration complète d'un favori (requête + filtres +
+  group by) sur un mount frais ;
+- ListController et KanbanController : pipeline de recherche
+  dashboard → filtres actifs → requête texte ; candidats « Grouper par »
+  fusionnés avec les filtres de groupe du `<search>`.
+
 ### Renderer form (itération 4)
 - `form_arch_parser.js::buildFormTemplate()` : **arch → template OWL** (scaffolding, groups `o_inner_group` avec colspan/newline, notebook réactif, h1, button_box, header buttons, statusbar) ;
 - `FormRenderer` composant OWL (emplacements `data-form-slot` remplis après render, `ready` = saisies garanties) ;
 - compilateurs DOM vanilla supprimés (form_compiler, form_group, form_header, button_box, core/notebook).
 
-### Contrôleurs (itérations 5-6)
-- `FormController`, `ListController`, `KanbanController` (enveloppe de ListController) : **composants OWL**, zones en template, logique offline intacte (sync, règles document, ledger, actions objet, sauvegarde, pagination, recherche, dashboard), `onMounted`/`onWillDestroy`.
+### Contrôleurs (itérations 5-6, 11)
+- `FormController`, `ListController`, `KanbanController` (**dédié** depuis l'itération 11, descripteur `{ Controller }`) : **composants OWL**, zones en template, logique offline intacte (sync, règles document, ledger, actions objet, sauvegarde, pagination, recherche, dashboard), `onMounted`/`onWillDestroy`.
 - `view.js` monte `descriptor.Controller` (props params + env), comme le webclient natif.
 
 ### Control panel + breadcrumb (itération 7)
-- `ControlPanel` OWL embeddé dans les contrôleurs, props-driven (`display`, `breadcrumb`, `pager` `{page,pageSize,total}`, `views`), callbacks (onNew/onSearch/onPage/onSwitch/onSave/onUndo), **debounce recherche internalisé**.
+- `ControlPanel` OWL embeddé dans les contrôleurs, props-driven (`display`, `breadcrumb`, `pager` `{page,pageSize,total}`, `views`, `groups`, `filters`, `favorites`, `query`), callbacks (onNew/onSearch/onPage/onSwitch/onGroupBy/onToggleFilter/onSelectFavorite/onSaveFavorite/onDeleteFavorite/onSave/onUndo), **debounce recherche internalisé**.
 - `Breadcrumb` OWL (`webclient/breadcrumb/`), slots indicateur d'enregistrement + engrenage.
 - `buildControlPanel`/`buildBreadcrumb` vanilla supprimés.
 
@@ -88,7 +108,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 8. Validation required/constraints au save : partielle (via `validateDocument`), pas d'équivalent complet de checkRequired.
 
 ### Couche recherche
-9. **SearchBar riche** : filtres/groupBy/favoris (Odoo withSearch + favorite_menu) — ici simple filtre texte ; engrenage options purement décoratif.
+9. SearchBar : filtres/favoris/group by FAITS (itération 12) ; reste l'auto-complétion des `<field>` du `<search>` et les domaines dynamiques (Odoo withSearch complet) ; engrenage options purement décoratif.
 
 ### Shell webclient
 11. **Navbar, systray, user_menu, home_menu, login** : encore impératifs (DOM vanilla) — dernière grosse migration OWL possible.
@@ -105,10 +125,9 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 ---
 
 ## Ordre de reprise suggéré
-1. contrôleur kanban dédié + group by ;
-4. shell webclient OWL (navbar/home_menu/user_menu) ;
-3. search avancé (filtres/favoris) ;
-4. ActionService étendu + notifications.
+1. quick create kanban + drag & drop de cartes ;
+2. shell webclient OWL (navbar/home_menu/user_menu) ;
+3. ActionService étendu + notifications.
 
 ## Écarts assumés (spécificité hors ligne, à ne PAS « corriger »)
 - Champs montés par `field_bridge` (contrat DOM sérialiseur) plutôt que tags `<Field>` OWL ;

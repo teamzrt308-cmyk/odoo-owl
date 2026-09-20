@@ -139,14 +139,40 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   OWL porte les trois zones (control panel / statut / hôte renderer) ;
   la logique hors ligne (sync, règles, ledger) vit dans setup() et le
   cleanup est garanti par onWillDestroy.
-- ✅ `views/list/list_controller.js` : le CONTRÔLEUR list (et kanban,
-  qui le partage) est un composant OWL (`ListController`) --
-  `list_view.js` expose `{ Controller }` et le descripteur kanban
-  (kanban_view.js) enveloppe ListController en forçant view="kanban".
-  Quatre zones OWL (control panel / statut / dashboard / liste) ; la
-  logique hors ligne (pagination, recherche, view-switcher, dashboard
-  achats, record rules) vit dans setup(), cleanup garanti par
-  onWillDestroy.
+- ✅ `views/list/list_controller.js` : le CONTRÔLEUR list est un
+  composant OWL (`ListController`) -- `list_view.js` expose
+  `{ Controller }`. Quatre zones OWL (control panel / statut / 
+  dashboard / liste) ; la logique hors ligne (pagination, recherche,
+  view-switcher, dashboard achats, record rules) vit dans setup(),
+  cleanup garanti par onWillDestroy.
+- ✅ `views/list/list_renderer.js` + `list_arch_parser.js` (itération 9)
+  : la vue LISTE est rendue par un composant OWL à TEMPLATE STATIQUE
+  (comme le natif), alimenté par les colonnes parsées de l'arch : tri
+  par colonne, colonnes optionnelles persistées, sélection, badges
+  decoration-*. `renderListView`/`renderListCell` vanilla supprimés.
+- ✅ Group by liste (itération 10) : menu « Grouper par » du
+  ControlPanel ; ListRenderer : en-têtes `o_group_header` dépliables
+  (caret, compteur, sommes monetary/float), libellés par type
+  (`groupLabel` partagé), groupes triés par libellé -- regroupement sur
+  la page courante (écart assumé, pas de read_group serveur).
+- ✅ `views/kanban/kanban_controller.js` + colonnes (itération 11) :
+  `KanbanController` DÉDIÉ (`kanban_view.js` expose `{ Controller }`,
+  plus d'enveloppe ListController) ; `default_group_by` de l'arch,
+  menu « Grouper par » (champs regroupables de l'arch kanban),
+  recherche, bascule liste via le dispatcher (doAction list_view) ;
+  `mountKanbanView(..., groupBy)` construit les colonnes (en-tête
+  libellé + badge compteur, « Aucun » pour les valeurs vides), template
+  compilé à trois branches (groupé / vide / à plat).
+- ✅ Search avancé (itération 12) : `search/search_arch_parser.js` (arch
+  `<search>` → filtres + filtres de groupe, tuples Python convertis en
+  JSON), `search/search_utils.js` (`matchesSimpleDomain` partagé,
+  `applyFilters` ET entre filtres, repli selection),
+  `search/search_favorites.js` (équivalent hors ligne d'ir.filters,
+  localStorage par modèle) ; ControlPanel : menus Filtres/Favoris +
+  FACETTES retirables dans la barre de recherche, restauration complète
+  d'un favori (requête + filtres + group by) sur un mount frais ;
+  pipeline ListController/KanbanController : dashboard → filtres
+  actifs → requête texte.
 - ✅ `search/control_panel/control_panel.js` : le ControlPanel est un
   composant OWL embeddé dans les templates des contrôleurs (static
   components), alimenté par props -- `display` (blocs affichés, comme

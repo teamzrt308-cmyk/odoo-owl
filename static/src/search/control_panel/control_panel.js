@@ -10,10 +10,19 @@
  *  - breadcrumb : { listLabel, recordLabel } (composant Breadcrumb,
  *                 webclient/breadcrumb/) ;
  *  - pager      : { page, pageSize, total } | null (masqué si null/vide) ;
- *  - views      : { available: [], current } | null (view switcher).
+ *  - views      : { available: [], current } | null (view switcher) ;
+ *  - groups     : { available: [{name,label}], current } | null (Grouper par) ;
+ *  - filters    : { available: [{name,label}], active: [] } (menu Filtres,
+ *                 issu de l'arch <search> ou des champs selection) ;
+ *  - favorites  : { available: [{name}], current } (menu Favoris) ;
+ *  - query      : requête courante (restauration d'un favori).
  * Les interactions remontent par callbacks : onNew, onSearch (debounce
  * 300ms géré ici, comme le SearchBar natif), onPage(delta), onSwitch,
- * onSave, onUndo.
+ * onGroupBy, onToggleFilter, onSaveFavorite, onSelectFavorite,
+ * onDeleteFavorite, onSave, onUndo.
+ *
+ * Les filtres actifs sont affichés en FACETTES dans la barre de
+ * recherche (retirables), comme le SearchBar natif d'Odoo.
  *
  * Les classes CSS sont identiques à l'ancien buildControlPanel() vanilla
  * (contrat visuel et sélecteurs de test préservés).
@@ -39,11 +48,18 @@ export class ControlPanel extends owl.Component {
     pager: { type: Object, optional: true },
     views: { type: Object, optional: true },
     groups: { type: Object, optional: true }, // { available: [{name,label}], current }
+    filters: { type: Object, optional: true }, // { available: [{name,label}], active: [] }
+    favorites: { type: Object, optional: true }, // { available: [{name}], current }
+    query: { type: String, optional: true },
     onNew: { type: Function, optional: true },
     onSearch: { type: Function, optional: true },
     onPage: { type: Function, optional: true },
     onSwitch: { type: Function, optional: true },
     onGroupBy: { type: Function, optional: true },
+    onToggleFilter: { type: Function, optional: true },
+    onSaveFavorite: { type: Function, optional: true },
+    onSelectFavorite: { type: Function, optional: true },
+    onDeleteFavorite: { type: Function, optional: true },
     onSave: { type: Function, optional: true },
     onUndo: { type: Function, optional: true },
   };
@@ -72,9 +88,23 @@ export class ControlPanel extends owl.Component {
           </Breadcrumb>
         </div>
         <div class="o_control_panel_navigation d-flex flex-wrap flex-md-nowrap justify-content-end gap-3 gap-lg-1 gap-xl-3 order-1 order-lg-2 flex-grow-1">
+          <div t-if="display.withFilters and filters and filters.available.length > 0" class="o_cp_filters position-relative">
+            <button type="button" class="btn btn-secondary o_filters_button d-flex align-items-center gap-1" title="Filtres"
+                    t-on-click.stop="() => this.toggleMenu('filtersMenuOpen')">
+              Filtres<span t-if="filters.active.length > 0" class="badge text-bg-primary" t-esc="filters.active.length"/><i class="fa fa-angle-down"/>
+            </button>
+            <div t-if="state.filtersMenuOpen" class="dropdown-menu show o_filters_menu"
+                 style="position: absolute; top: 100%; left: 0; z-index: 1000; min-width: 220px;">
+              <a t-foreach="filters.available" t-as="f" t-key="f.name" href="#"
+                 t-att-class="'dropdown-item d-flex align-items-center gap-2' + (filters.active.includes(f.name) ? ' active' : '')"
+                 t-on-click.stop="() => this.toggleFilter(f.name)">
+                <t t-esc="f.label"/><i t-if="filters.active.includes(f.name)" class="fa fa-check ms-auto"/>
+              </a>
+            </div>
+          </div>
           <div t-if="display.withGroupBy and groups and groups.available.length > 0" class="o_cp_groupby position-relative">
             <button type="button" class="btn btn-secondary o_groupby_button d-flex align-items-center gap-1" title="Grouper par"
-                    t-on-click.stop="() => this.toggleGroupByMenu()">
+                    t-on-click.stop="() => this.toggleMenu('groupByMenuOpen')">
               Grouper par <i class="fa fa-angle-down"/>
             </button>
             <div t-if="state.groupByMenuOpen" class="dropdown-menu show o_groupby_menu"
@@ -90,11 +120,43 @@ export class ControlPanel extends owl.Component {
               </a>
             </div>
           </div>
+          <div t-if="display.withFavorites" class="o_cp_favorites position-relative">
+            <button type="button" class="btn btn-secondary o_favorites_button d-flex align-items-center gap-1" title="Favoris"
+                    t-on-click.stop="() => this.toggleMenu('favoritesMenuOpen')">
+              Favoris <i class="fa fa-angle-down"/>
+            </button>
+            <div t-if="state.favoritesMenuOpen" class="dropdown-menu show o_favorites_menu"
+                 style="position: absolute; top: 100%; left: 0; z-index: 1000; min-width: 240px;">
+              <div t-foreach="favorites.available" t-as="fav" t-key="fav.name"
+                   t-att-class="'dropdown-item d-flex align-items-center gap-2' + (fav.name === favorites.current ? ' active' : '')"
+                   t-on-click.stop="() => this.selectFavorite(fav.name)" role="button">
+                <t t-esc="fav.name"/><i t-if="fav.name === favorites.current" class="fa fa-check"/>
+                <span class="o_delete_favorite text-danger ms-auto" role="button" title="Supprimer ce favori"
+                      t-on-click.stop="() => this.deleteFavorite(fav.name)"><i class="fa fa-trash"/></span>
+              </div>
+              <div class="dropdown-divider"/>
+              <div t-if="state.favoriteInputOpen" class="px-3 py-2 d-flex gap-1" t-on-click.stop="">
+                <input type="text" class="form-control form-control-sm o_favorite_name_input" placeholder="Nom du favori"
+                       t-ref="favoriteInput" t-on-keydown="onFavoriteNameKeydown"/>
+                <button type="button" class="btn btn-primary btn-sm text-nowrap o_save_favorite_button"
+                        t-on-click="() => this.saveFavorite()">Enregistrer</button>
+              </div>
+              <a t-else="" href="#" class="dropdown-item o_add_favorite" t-on-click.stop="() => this.openFavoriteInput()">
+                Enregistrer la recherche actuelle
+              </a>
+            </div>
+          </div>
           <div t-if="display.withSearch" class="o_cp_searchview d-flex input-group flex-grow-1" role="search">
             <div class="o_searchview form-control d-flex align-items-center py-1" role="search">
               <i class="o_searchview_icon d-print-none oi oi-search me-2"/>
               <div class="o_searchview_input_container d-flex flex-grow-1 flex-wrap gap-1">
-                <input type="text" class="o_searchview_input border-0 flex-grow-1" placeholder="Rechercher..." t-on-input="onSearchInput"/>
+                <span t-foreach="activeFacets" t-as="facet" t-key="facet.name"
+                      class="o_searchview_facet d-inline-flex align-items-center gap-1 badge text-bg-light border">
+                  <t t-esc="facet.label"/>
+                  <button type="button" class="o_facet_remove btn btn-link p-0 border-0 lh-1" title="Retirer ce filtre"
+                          aria-label="Retirer ce filtre" t-on-click.stop="() => this.removeFacet(facet.name)">×</button>
+                </span>
+                <input type="text" class="o_searchview_input border-0 flex-grow-1" placeholder="Rechercher..." t-ref="searchInput" t-on-input="onSearchInput"/>
               </div>
             </div>
           </div>
@@ -139,23 +201,101 @@ export class ControlPanel extends owl.Component {
     // Map d'icônes exposée au scope du template (view switcher).
     this.icons = VIEW_SWITCHER_ICONS;
     this.searchDebounceTimer = null;
-    this.state = owl.useState({ groupByMenuOpen: false });
-
-    // Fermeture du menu Grouper par au clic extérieur.
-    owl.useExternalListener(document.body, "click", () => {
-      if (this.state.groupByMenuOpen) this.state.groupByMenuOpen = false;
+    this.searchInputRef = owl.useRef("searchInput");
+    this.favoriteInputRef = owl.useRef("favoriteInput");
+    this.state = owl.useState({
+      groupByMenuOpen: false,
+      filtersMenuOpen: false,
+      favoritesMenuOpen: false,
+      favoriteInputOpen: false,
     });
 
+    // Fermeture des menus déroulants au clic extérieur.
+    owl.useExternalListener(document.body, "click", () => this.closeAllMenus());
+
     owl.onWillDestroy(() => clearTimeout(this.searchDebounceTimer));
+
+    owl.onMounted(() => {
+      // Requête initiale (ex: restauration d'un favori au mount).
+      if (this.searchInputRef.el && (this.props.query || "")) {
+        this.searchInputRef.el.value = this.props.query;
+      }
+    });
+
+    // L'input de recherche est non contrôlé : la requête n'est mise à
+    // jour dans le DOM que si elle change PAR DEHORS (favori appliqué),
+    // et jamais pendant la saisie (hors focus).
+    owl.onWillUpdateProps((nextProps) => {
+      const nextQuery = nextProps.query || "";
+      if (
+        nextQuery !== (this.props.query || "") &&
+        this.searchInputRef.el &&
+        document.activeElement !== this.searchInputRef.el
+      ) {
+        this.searchInputRef.el.value = nextQuery;
+      }
+    });
   }
 
-  toggleGroupByMenu() {
-    this.state.groupByMenuOpen = !this.state.groupByMenuOpen;
+  closeAllMenus() {
+    this.state.groupByMenuOpen = false;
+    this.state.filtersMenuOpen = false;
+    this.state.favoritesMenuOpen = false;
+  }
+
+  toggleMenu(menuKey) {
+    const opening = !this.state[menuKey];
+    this.closeAllMenus();
+    this.state.favoriteInputOpen = false;
+    this.state[menuKey] = opening;
   }
 
   selectGroupBy(name) {
     if (this.props.onGroupBy) this.props.onGroupBy(name);
     this.state.groupByMenuOpen = false;
+  }
+
+  /** Bascule un filtre du menu Filtres -- le menu RESTE ouvert. */
+  toggleFilter(name) {
+    if (this.props.onToggleFilter) this.props.onToggleFilter(name);
+  }
+
+  /** Retrait d'une facette dans la barre de recherche. */
+  removeFacet(name) {
+    if (this.props.onToggleFilter) this.props.onToggleFilter(name);
+  }
+
+  selectFavorite(name) {
+    if (this.props.onSelectFavorite) this.props.onSelectFavorite(name);
+    this.closeAllMenus();
+    this.state.favoriteInputOpen = false;
+  }
+
+  deleteFavorite(name) {
+    if (this.props.onDeleteFavorite) this.props.onDeleteFavorite(name);
+  }
+
+  openFavoriteInput() {
+    this.state.favoriteInputOpen = true;
+    setTimeout(() => {
+      if (this.favoriteInputRef.el) this.favoriteInputRef.el.focus();
+    }, 0);
+  }
+
+  saveFavorite() {
+    const input = this.favoriteInputRef.el;
+    const name = input ? input.value.trim() : "";
+    if (!name) return;
+    if (this.props.onSaveFavorite) this.props.onSaveFavorite(name);
+    this.state.favoriteInputOpen = false;
+  }
+
+  onFavoriteNameKeydown(ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      this.saveFavorite();
+    }
+    if (ev.key === "Escape") this.state.favoriteInputOpen = false;
   }
 
   get breadcrumb() {
@@ -174,6 +314,26 @@ export class ControlPanel extends owl.Component {
     // Comme pager/views : le template lit la propriété du composant,
     // pas this.props directement.
     return this.props.groups || null;
+  }
+
+  get filters() {
+    return this.props.filters || null;
+  }
+
+  get favorites() {
+    return this.props.favorites || null;
+  }
+
+  get query() {
+    return this.props.query || "";
+  }
+
+  /** Facettes actives : [{name, label}] (labels résolus depuis available). */
+  get activeFacets() {
+    const f = this.props.filters;
+    if (!f || !f.available) return [];
+    const labels = new Map(f.available.map((d) => [d.name, d.label]));
+    return (f.active || []).map((name) => ({ name, label: labels.get(name) || name }));
   }
 
   get pagerCounter() {
