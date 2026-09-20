@@ -46,6 +46,17 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
   regroupement sur la page courante (cache local, pas de read_group
   serveur -- écart documenté).
 
+### Contrôleur kanban dédié + colonnes (itération 11)
+- `KanbanController` OWL (`{ Controller }`, plus d'enveloppe
+  ListController) : default_group_by de l'arch, menu « Grouper par »
+  (candidats = champs regroupables de l'arch kanban), recherche,
+  New, bascule liste via le dispatcher (doAction list_view) ;
+- `mountKanbanView(..., groupBy)` : colonnes verticales (en-tête
+  libellé + compteur, cartes du groupe, triées, « Aucun ») ; template
+  compilé à trois branches (groupé / vide / à plat) ;
+- helpers partagés list/kanban : `groupLabel`, `recordMatchesQuery`
+  (list_renderer_utils).
+
 ### Renderer form (itération 4)
 - `form_arch_parser.js::buildFormTemplate()` : **arch → template OWL** (scaffolding, groups `o_inner_group` avec colspan/newline, notebook réactif, h1, button_box, header buttons, statusbar) ;
 - `FormRenderer` composant OWL (emplacements `data-form-slot` remplis après render, `ready` = saisies garanties) ;
@@ -66,7 +77,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 
 ### Vues
 1. **Pivot / Graph** : placeholders « à venir » (Odoo : renderers + mesures/groupes).
-2. **Contrôleur kanban dédié** : aujourd'hui enveloppe de ListController — group by en COLONNES kanban absent (le group by liste est fait, itération 10).
+2. Kanban : pas encore de quick create (« + » en colonne), chargement dynamique par colonne.
 3. Calendrier, gantt, activité… : hors périmètre actuel (à trancher explicitement).
 
 ### Widgets de champ

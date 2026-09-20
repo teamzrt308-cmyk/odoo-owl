@@ -22,7 +22,7 @@
 
 import { mountOwlApp } from "../../owl/app.js";
 import { parseListArch } from "./list_arch_parser.js";
-import { formatCellValue, getDecorationClass } from "./list_renderer_utils.js";
+import { formatCellValue, getDecorationClass, groupLabel } from "./list_renderer_utils.js";
 import { loadOptionalColumnsState, saveOptionalColumnsState } from "./list_column_prefs.js";
 
 export class ListRenderer extends owl.Component {
@@ -322,25 +322,6 @@ export class ListRenderer extends owl.Component {
   badgeClass(record, col) {
     return getDecorationClass(col.decoration, record);
   }
-}
-
-/**
- * Libellé d'un groupe selon le type du champ de regroupement (tuple
- * many2one -> libellé, selection -> libellé, boolean -> Oui/Non,
- * vide -> "Aucun"), comme le GroupByMenu natif.
- */
-function groupLabel(rawValue, info) {
-  // Un boolean false est une valeur légitime ("Non"), pas un vide.
-  if (info && info.type === "boolean") return rawValue ? "Oui" : "Non";
-  if (rawValue === false || rawValue === undefined || rawValue === null || rawValue === "") {
-    return "Aucun";
-  }
-  if (Array.isArray(rawValue)) return rawValue[1] || "Aucun";
-  if (info && info.type === "selection") {
-    const found = (info.selection || []).find(([v]) => String(v) === String(rawValue));
-    return found ? found[1] : String(rawValue);
-  }
-  return String(rawValue);
 }
 
 /**

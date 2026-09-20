@@ -23,7 +23,7 @@ import { CONFIG, getApiKey, getUserId } from "../../core/browser/session.js";
 import { getSecurityInfo } from "../../core/user_service.js";
 import { getModuleManifest, resolveModelViews } from "../view_service.js";
 import { getListRecordsSmart, getPurchaseDashboardSmart } from "../../core/list_cache.js";
-import { formatCellValue } from "./list_renderer_utils.js";
+import { formatCellValue, recordMatchesQuery } from "./list_renderer_utils.js";
 import { mountListView } from "./list_renderer.js";
 import { parseListArch } from "./list_arch_parser.js";
 import { mountKanbanView } from "../kanban/kanban_renderer.js";
@@ -186,22 +186,6 @@ export class ListController extends owl.Component {
         : filtered;
     }
 
-    function recordMatchesQuery(record, fieldsInfo, query) {
-      const q = query.trim().toLowerCase();
-      if (!q) return true;
-      for (const [fname, info] of Object.entries(fieldsInfo)) {
-        const raw = record[fname];
-        if (raw === undefined || raw === false || raw === null) continue;
-        const text = formatCellValue(raw, info);
-        if (text && text.toLowerCase().includes(q)) return true;
-      }
-      return false;
-    }
-
-    /**
-     * Synchronise l'état réactif du pager -- le compteur et les
-     * disabled sont calculés par le composant ControlPanel (props).
-     */
     function syncPager() {
       self.ui.pager.page = currentPage;
       self.ui.pager.total = allRecords.length;

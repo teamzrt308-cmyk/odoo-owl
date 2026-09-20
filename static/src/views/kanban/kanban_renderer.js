@@ -18,7 +18,7 @@
  */
 
 import { mountOwlApp } from "../../owl/app.js";
-import { formatCellValue } from "../list/list_renderer_utils.js";
+import { formatCellValue, groupLabel } from "../list/list_renderer_utils.js";
 import { parseKanbanArch } from "./kanban_arch_parser.js";
 
 /**
@@ -44,6 +44,10 @@ function buildKanbanRecordProxy(record, fieldsInfo) {
 export class KanbanRenderer extends owl.Component {
   static props = {
     records: { type: Array },
+    // group by : nom du champ ou null -> grille à plat
+    groupBy: { optional: true },
+    // [{ key, label, records }] en mode groupé (records = proxies)
+    columns: { type: Array, optional: true },
     fieldsInfo: { type: Object },
     onCardClick: { type: Function },
   };
@@ -56,15 +60,46 @@ export class KanbanRenderer extends owl.Component {
 }
 
 /**
+ * Construit les colonnes de group by (itération 11) : regroupement
+ * client des records par champ, libellés partagés avec la liste
+ * (groupLabel), tri par libellé.
+ */
+function buildKanbanColumns(records, groupBy, fieldsInfo) {
+  const info = (fieldsInfo || {})[groupBy];
+  const map = new Map();
+  for (const record of records) {
+    const raw = record ? record[groupBy] : undefined;
+    const key =
+      info && info.type === "boolean"
+        ? raw ? "1" : "0"
+        : raw === false || raw === undefined || raw === null || raw === ""
+          ? "__none__"
+          : Array.isArray(raw)
+            ? String(raw[0])
+            : String(raw);
+    if (!map.has(key)) map.set(key, { rawValue: raw, records: [] });
+    map.get(key).records.push(record);
+  }
+  const columns = [...map.entries()].map(([key, { rawValue, records: groupRecords }]) => ({
+    key: `${groupBy}:${key}`,
+    label: groupLabel(rawValue, info),
+    records: groupRecords.map((r) => buildKanbanRecordProxy(r, fieldsInfo)),
+  }));
+  columns.sort((a, b) => a.label.localeCompare(b.label, "fr"));
+  return columns;
+}
+
+/**
  * Mounts the OWL kanban renderer into `target` for the given arch.
  * @param {HTMLElement} target - conteneur déjà inséré dans le DOM
  * @param {string} archXml - arch XML brute de la vue kanban
  * @param {Object} fieldsInfo - métadonnées des champs du modèle
  * @param {Array} records - enregistrements bruts de la page courante
  * @param {Function} onCardClick - callback(recordId)
+ * @param {string|null} [groupBy] - champ de regroupement (colonnes)
  * @returns {Promise<{ destroy: Function }>}
  */
-export async function mountKanbanView(target, archXml, fieldsInfo, records, onCardClick) {
+export async function mountKanbanView(target, archXml, fieldsInfo, records, onCardClick, groupBy = null) {
   const parsed = parseKanbanArch(archXml);
 
   if (parsed.error) {
@@ -79,6 +114,7 @@ export async function mountKanbanView(target, archXml, fieldsInfo, records, onCa
   const recordProxies = (records || []).map((rawRecord) =>
     buildKanbanRecordProxy(rawRecord, fieldsInfo)
   );
+  const columns = groupBy ? buildKanbanColumns(records || [], groupBy, fieldsInfo) : [];
 
   // Le template du renderer dépend de l'arch : il est injecté dans
   // l'App OWL au mount -- même principe que le chargement des templates
@@ -90,6 +126,8 @@ export async function mountKanbanView(target, archXml, fieldsInfo, records, onCa
     target,
     {
       records: recordProxies,
+      groupBy,
+      columns,
       fieldsInfo,
       onCardClick,
     },

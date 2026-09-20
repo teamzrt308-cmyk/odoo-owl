@@ -43,3 +43,39 @@ export function formatCellValue(value, info) {
       return String(value);
   }
 }
+
+/**
+ * Libellé d'un groupe selon le type du champ de regroupement (tuple
+ * many2one -> libellé, selection -> libellé, boolean -> Oui/Non,
+ * vide -> "Aucun"), comme le GroupByMenu natif -- partagé par les
+ * renderers list (en-têtes de groupes) et kanban (titres de colonnes).
+ * Un boolean false est une valeur légitime ("Non"), pas un vide.
+ */
+export function groupLabel(rawValue, info) {
+  if (info && info.type === "boolean") return rawValue ? "Oui" : "Non";
+  if (rawValue === false || rawValue === undefined || rawValue === null || rawValue === "") {
+    return "Aucun";
+  }
+  if (Array.isArray(rawValue)) return rawValue[1] || "Aucun";
+  if (info && info.type === "selection") {
+    const found = (info.selection || []).find(([v]) => String(v) === String(rawValue));
+    return found ? found[1] : String(rawValue);
+  }
+  return String(rawValue);
+}
+
+/**
+ * Filtre textuel client partagé par les contrôleurs list et kanban :
+ * un record matche si UN de ses champs formatés contient la requête.
+ */
+export function recordMatchesQuery(record, fieldsInfo, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  for (const [fname, info] of Object.entries(fieldsInfo)) {
+    const raw = record[fname];
+    if (raw === undefined || raw === false || raw === null) continue;
+    const text = formatCellValue(raw, info);
+    if (text && text.toLowerCase().includes(q)) return true;
+  }
+  return false;
+}

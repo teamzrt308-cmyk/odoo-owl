@@ -69,16 +69,37 @@ function compileCardTemplate(templateNode, doc) {
 
 /**
  * Enveloppe le contenu compilé d'une carte dans le template complet du
- * renderer : grille + boucle sur les records + gestion du clic de carte
- * (l'équivalent du oe_kanban_global_click d'Odoo, qui dans l'ancien
- * moteur était posé par le renderer lui-même).
+ * renderer : TROIS branches (comme KanbanRenderer natif) --
+ *  - groupé (props.groupBy + props.columns) : colonnes verticales avec
+ *    en-tête (libellé + compteur) et cartes du groupe ;
+ *  - vide : message « Aucun enregistrement. » ;
+ *  - à plat : grille de cartes (comportement historique).
+ * Le clic de carte reproduit le oe_kanban_global_click d'Odoo.
  */
 function buildRendererTemplate(cardInner) {
   return `
 <t t-name="${RENDERER_TEMPLATE_NAME}">
-  <div class="o_kanban_view o_kanban_ungrouped">
-    <div t-if="props.records.length === 0" class="o_kanban_renderer o_kanban_no_records text-muted p-4 text-center">Aucun enregistrement.</div>
-    <div t-else="" class="o_kanban_renderer o_kanban_grouped d-flex flex-wrap gap-3 p-3">
+  <div class="o_kanban_view">
+    <div t-if="props.groupBy and props.columns and props.columns.length > 0" class="o_kanban_renderer o_kanban_grouped d-flex gap-3 p-3 overflow-auto">
+      <div t-foreach="props.columns" t-as="column" t-key="column.key"
+           class="o_kanban_group" style="min-width: 320px; width: 320px; flex-shrink: 0;">
+        <div class="o_kanban_header d-flex align-items-center gap-2 py-2">
+          <span class="o_kanban_group_title fw-bold" t-esc="column.label"/>
+          <span class="o_kanban_count badge text-bg-secondary" t-esc="column.records.length"/>
+        </div>
+        <div class="o_kanban_group_records d-flex flex-column gap-2">
+          <div t-if="column.records.length === 0" class="text-muted small">Aucune carte.</div>
+          <div t-else="" t-foreach="column.records" t-as="record"
+               t-key="record.id.raw_value != null ? record.id.raw_value : record_index"
+               class="o_kanban_record" style="cursor:pointer;"
+               t-on-click="() => props.onCardClick(record.id.raw_value)">
+            ${cardInner}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div t-elif="props.records.length === 0" class="o_kanban_renderer o_kanban_no_records text-muted p-4 text-center">Aucun enregistrement.</div>
+    <div t-else="" class="o_kanban_renderer o_kanban_ungrouped d-flex flex-wrap gap-3 p-3">
       <div t-foreach="props.records" t-as="record"
            t-key="record.id.raw_value != null ? record.id.raw_value : record_index"
            class="o_kanban_record" style="width:300px;cursor:pointer;"
@@ -113,5 +134,14 @@ export function parseKanbanArch(archXml) {
   return {
     templateName: RENDERER_TEMPLATE_NAME,
     templateXml: buildRendererTemplate(cardInner),
+    // group by par défaut de l'arch (default_group_by, comme le natif)
+    // + champs déclarés dans l'arch (racine ET template -- les archs
+    // kanban Odoo déclarent aux deux endroits), dédupliqués.
+    defaultGroupBy: kanbanRoot.getAttribute("default_group_by") || null,
+    fields: [...new Set(
+      Array.from(kanbanRoot.querySelectorAll("field"))
+        .map((f) => f.getAttribute("name"))
+        .filter(Boolean)
+    )],
   };
 }
