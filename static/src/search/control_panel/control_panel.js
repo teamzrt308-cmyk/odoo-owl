@@ -38,10 +38,12 @@ export class ControlPanel extends owl.Component {
     breadcrumb: { type: Object, optional: true },
     pager: { type: Object, optional: true },
     views: { type: Object, optional: true },
+    groups: { type: Object, optional: true }, // { available: [{name,label}], current }
     onNew: { type: Function, optional: true },
     onSearch: { type: Function, optional: true },
     onPage: { type: Function, optional: true },
     onSwitch: { type: Function, optional: true },
+    onGroupBy: { type: Function, optional: true },
     onSave: { type: Function, optional: true },
     onUndo: { type: Function, optional: true },
   };
@@ -70,6 +72,24 @@ export class ControlPanel extends owl.Component {
           </Breadcrumb>
         </div>
         <div class="o_control_panel_navigation d-flex flex-wrap flex-md-nowrap justify-content-end gap-3 gap-lg-1 gap-xl-3 order-1 order-lg-2 flex-grow-1">
+          <div t-if="display.withGroupBy and groups and groups.available.length > 0" class="o_cp_groupby position-relative">
+            <button type="button" class="btn btn-secondary o_groupby_button d-flex align-items-center gap-1" title="Grouper par"
+                    t-on-click.stop="() => this.toggleGroupByMenu()">
+              Grouper par <i class="fa fa-angle-down"/>
+            </button>
+            <div t-if="state.groupByMenuOpen" class="dropdown-menu show o_groupby_menu"
+                 style="position: absolute; top: 100%; left: 0; z-index: 1000; min-width: 200px;">
+              <a href="#" t-att-class="'dropdown-item d-flex align-items-center gap-2' + (groups.current === null ? ' active' : '')"
+                 t-on-click.stop="() => this.selectGroupBy(null)">
+                Aucun groupe <i t-if="groups.current === null" class="fa fa-check ms-auto"/>
+              </a>
+              <a t-foreach="groups.available" t-as="g" t-key="g.name" href="#"
+                 t-att-class="'dropdown-item d-flex align-items-center gap-2' + (groups.current === g.name ? ' active' : '')"
+                 t-on-click.stop="() => this.selectGroupBy(g.name)">
+                <t t-esc="g.label"/><i t-if="groups.current === g.name" class="fa fa-check ms-auto"/>
+              </a>
+            </div>
+          </div>
           <div t-if="display.withSearch" class="o_cp_searchview d-flex input-group flex-grow-1" role="search">
             <div class="o_searchview form-control d-flex align-items-center py-1" role="search">
               <i class="o_searchview_icon d-print-none oi oi-search me-2"/>
@@ -113,13 +133,29 @@ export class ControlPanel extends owl.Component {
       withViewSwitcher: false,
       withRecordStatusIcons: false,
       withOptionsGear: false,
+      withGroupBy: false,
       ...(this.props.display || {}),
     };
     // Map d'icônes exposée au scope du template (view switcher).
     this.icons = VIEW_SWITCHER_ICONS;
     this.searchDebounceTimer = null;
+    this.state = owl.useState({ groupByMenuOpen: false });
+
+    // Fermeture du menu Grouper par au clic extérieur.
+    owl.useExternalListener(document.body, "click", () => {
+      if (this.state.groupByMenuOpen) this.state.groupByMenuOpen = false;
+    });
 
     owl.onWillDestroy(() => clearTimeout(this.searchDebounceTimer));
+  }
+
+  toggleGroupByMenu() {
+    this.state.groupByMenuOpen = !this.state.groupByMenuOpen;
+  }
+
+  selectGroupBy(name) {
+    if (this.props.onGroupBy) this.props.onGroupBy(name);
+    this.state.groupByMenuOpen = false;
   }
 
   get breadcrumb() {
@@ -132,6 +168,12 @@ export class ControlPanel extends owl.Component {
 
   get views() {
     return this.props.views || null;
+  }
+
+  get groups() {
+    // Comme pager/views : le template lit la propriété du composant,
+    // pas this.props directement.
+    return this.props.groups || null;
   }
 
   get pagerCounter() {

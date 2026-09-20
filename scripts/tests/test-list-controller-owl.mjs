@@ -221,6 +221,39 @@ if (pivotBtn) {
   await tick(); await tick();
 }
 
+// ── 8bis. Menu Grouper par (ControlPanel OWL) ──
+const gbBtn = container.querySelector(".o_control_panel .o_groupby_button");
+ok(!!gbBtn, "list : bouton « Grouper par » présent");
+gbBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+await tick();
+const gbMenu = container.querySelector(".o_control_panel .o_groupby_menu.show");
+ok(!!gbMenu, "list : menu Grouper par ouvert");
+// candidats = colonnes de l'arch de type regroupable : name + partner_id
+// (state n'est pas une colonne de cette arch, amount_total float exclu)
+const gbItems = [...gbMenu.querySelectorAll("a.dropdown-item")].map((a) => a.textContent.trim());
+ok(gbItems.join(",") === "Aucun groupe,Référence,Client",
+   `list : candidats depuis le parseur (${gbItems.join(" | ")})`);
+const clientItem = [...gbMenu.querySelectorAll("a.dropdown-item")].find((a) => a.textContent.includes("Client"));
+clientItem.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+let groupHeader = null;
+for (let i = 0; i < 200 && !groupHeader; i++) {
+  groupHeader = container.querySelector("tr.o_group_header");
+  if (!groupHeader) await tick();
+}
+ok(!!groupHeader, "list : sélection Client -> groupes rendus");
+ok(container.textContent.includes("Alice"), "list : groupe many2one affiché par libellé");
+// retour à plat
+gbBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+await tick();
+const noGroupItem = [...container.querySelectorAll(".o_groupby_menu a.dropdown-item")].find((a) => a.textContent.includes("Aucun groupe"));
+noGroupItem.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+let flatAgain = false;
+for (let i = 0; i < 200 && !flatAgain; i++) {
+  flatAgain = container.querySelectorAll("tr.o_group_header").length === 0 && container.querySelectorAll("tr.o_data_row").length > 0;
+  if (!flatAgain) await tick();
+}
+ok(flatAgain, "list : « Aucun groupe » -> table à plat");
+
 // ── 9. Descripteur incomplet -> accueil ──
 const container2 = document.createElement("div");
 document.body.appendChild(container2);

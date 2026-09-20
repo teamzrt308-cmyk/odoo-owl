@@ -27,9 +27,10 @@ done
   descripteurs { Controller } list/kanban, parcours hors ligne (caches →
   lignes → pager → recherche → clic/Nouveau → bascule kanban OWL →
   pivot → destroy).
-- `test-list-owl.mjs` : renderer list OWL (itération 9) — parseListArch,
-  tri, colonnes optionnelles persistées, sélection, badges decoration-*,
-  formats, état vide, destroy.
+- `test-list-owl.mjs` : renderer list OWL (itérations 9-10) —
+  parseListArch, tri, colonnes optionnelles persistées, sélection,
+  badges decoration-*, formats, état vide, destroy, GROUP BY
+  (en-têtes dépliables, comptes, sommes, libellés par type).
 - `test-kanban-owl.mjs` : pilote OWL de la vue kanban (arch → template).
 - `test-structure.mjs` : invariants d'architecture (registres, chemins,
   conventions façon Odoo 17, compilation du notebook dans le template

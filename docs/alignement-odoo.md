@@ -37,6 +37,15 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 - `renderListView`/`renderListCell` vanilla supprimés -- tous les
   renderers de vues sont OWL.
 
+### Group by list (itération 10)
+- Menu « Grouper par » du ControlPanel (candidats = colonnes
+  regroupables char/selection/many2one/boolean de l'arch) ;
+- ListRenderer : en-têtes `o_group_header` dépliables (caret, compteur,
+  sommes monetary/float), libellés par type (m2o -> libellé, selection,
+  boolean Oui/Non, vide -> « Aucun »), ordre des groupes par libellé ;
+  regroupement sur la page courante (cache local, pas de read_group
+  serveur -- écart documenté).
+
 ### Renderer form (itération 4)
 - `form_arch_parser.js::buildFormTemplate()` : **arch → template OWL** (scaffolding, groups `o_inner_group` avec colspan/newline, notebook réactif, h1, button_box, header buttons, statusbar) ;
 - `FormRenderer` composant OWL (emplacements `data-form-slot` remplis après render, `ready` = saisies garanties) ;
@@ -57,9 +66,8 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 
 ### Vues
 1. **Pivot / Graph** : placeholders « à venir » (Odoo : renderers + mesures/groupes).
-2. **Contrôleur kanban dédié** : aujourd'hui enveloppe de ListController — group by, colonnes dynamiques absents.
-3. **Group by** (list/kanban) : absent.
-4. Calendrier, gantt, activité… : hors périmètre actuel (à trancher explicitement).
+2. **Contrôleur kanban dédié** : aujourd'hui enveloppe de ListController — group by en COLONNES kanban absent (le group by liste est fait, itération 10).
+3. Calendrier, gantt, activité… : hors périmètre actuel (à trancher explicitement).
 
 ### Widgets de champ
 6. Widgets Odoo absents (à trancher selon besoins PWA) : badge, url, image, handle, email/phone, many2one_avatar, favorite, percentage, color…
@@ -88,8 +96,8 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 ## Ordre de reprise suggéré
 1. contrôleur kanban dédié + group by ;
 4. shell webclient OWL (navbar/home_menu/user_menu) ;
-5. search avancé (filtres/groupBy/favoris) ;
-6. ActionService étendu + notifications.
+3. search avancé (filtres/favoris) ;
+4. ActionService étendu + notifications.
 
 ## Écarts assumés (spécificité hors ligne, à ne PAS « corriger »)
 - Champs montés par `field_bridge` (contrat DOM sérialiseur) plutôt que tags `<Field>` OWL ;

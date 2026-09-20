@@ -25,6 +25,7 @@ import { getModuleManifest, resolveModelViews } from "../view_service.js";
 import { getListRecordsSmart, getPurchaseDashboardSmart } from "../../core/list_cache.js";
 import { formatCellValue } from "./list_renderer_utils.js";
 import { mountListView } from "./list_renderer.js";
+import { parseListArch } from "./list_arch_parser.js";
 import { mountKanbanView } from "../kanban/kanban_renderer.js";
 import { renderPurchaseDashboard, buildPurchaseDashboardDomain } from "../purchase_dashboard.js";
 import { ControlPanel } from "../../search/control_panel/control_panel.js";
@@ -43,8 +44,8 @@ export class ListController extends owl.Component {
 
   static template = owl.xml`
     <div class="o_list_controller d-flex flex-column h-100">
-      <ControlPanel display="cpDisplay" breadcrumb="cpBreadcrumb" pager="cpPager" views="cpViews"
-                    onNew="onNewClick" onSearch="onSearchQuery" onPage="onPageClick" onSwitch="onSwitchView"/>
+      <ControlPanel display="cpDisplay" breadcrumb="cpBreadcrumb" pager="cpPager" views="cpViews" groups="cpGroups"
+                    onNew="onNewClick" onSearch="onSearchQuery" onPage="onPageClick" onSwitch="onSwitchView" onGroupBy="onGroupBySelect"/>
       <div t-ref="statusHost"/>
       <div t-ref="dashboardHost"/>
       <div t-ref="listHost"/>
@@ -69,6 +70,17 @@ export class ListController extends owl.Component {
     return {
       available: (this.ui && this.ui.availableViews) || [],
       current: (this.ui && this.ui.currentView) || "list",
+    };
+  }
+
+  get cpGroups() {
+    // Menu Grouper par : candidats résolus par le parseur de l'arch liste,
+    // proposé pour la vue LISTE uniquement (le kanban groupera en
+    // colonnes, voir contrôleur kanban dédié).
+    const ui = this.ui || {};
+    return {
+      available: ui.currentView === "list" ? ui.groupByCandidates || [] : [],
+      current: ui.groupBy === undefined ? null : ui.groupBy,
     };
   }
 
@@ -107,6 +119,7 @@ export class ListController extends owl.Component {
       withPager: true,
       withViewSwitcher: true,
       withOptionsGear: true,
+      withGroupBy: true,
     };
     self.ui = owl.useState({
       listLabel: label || null,
@@ -115,6 +128,8 @@ export class ListController extends owl.Component {
       pagerVisible: true,
       availableViews: [],
       currentView: view,
+      groupBy: params.groupBy || null,
+      groupByCandidates: [],
     });
     self.onNewClick = () => {
       env.doAction({ tag: "form_view", module, model, actionId, isNew: true });
@@ -133,6 +148,11 @@ export class ListController extends owl.Component {
     // résolution du manifest) -- voir plus bas.
     let viewSwitchHandler = null;
     self.onSwitchView = (viewType) => { if (viewSwitchHandler) viewSwitchHandler(viewType); };
+    self.onGroupBySelect = (name) => {
+      self.ui.groupBy = name;
+      currentPage = 0;
+      renderCurrentPage();
+    };
 
     // Status bar
     const statusEl = document.createElement("div");
@@ -250,7 +270,8 @@ export class ListController extends owl.Component {
             currentViewFieldsInfo,
             pageRecords,
             onRecordOpen,
-            model
+            model,
+            self.ui.groupBy
           );
           if (token !== renderToken) {
             destroy(); // la page a de nouveau changé pendant le mount -> on jette le rendu
@@ -292,6 +313,17 @@ export class ListController extends owl.Component {
         }
         viewSwitchHandler = onViewSwitch;
         self.ui.availableViews = availableViews;
+
+        // Candidats du menu Grouper par : colonnes de l'arch liste dont le
+        // type est regroupable (char/selection/many2one/boolean).
+        if (currentModelViews.list) {
+          const listParsed = parseListArch(currentModelViews.list.arch, currentViewFieldsInfo);
+          if (!listParsed.error) {
+            self.ui.groupByCandidates = listParsed.columns
+              .filter((c) => ["char", "selection", "many2one", "boolean"].includes((currentViewFieldsInfo[c.field] || {}).type))
+              .map((c) => ({ name: c.field, label: c.label }));
+          }
+        }
         self.ui.currentView = currentView;
 
         if (currentView === "pivot" || currentView === "graph") {

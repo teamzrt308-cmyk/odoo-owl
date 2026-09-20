@@ -185,4 +185,75 @@ ok(target2.childElementCount === 0, "list-owl : destroy -> DOM retiré");
 destroy();
 ok(target.childElementCount === 0, "list-owl : destroy du mount principal -> DOM retiré");
 
+// ── 8. Group by (itération 10) ──
+const gbFields = {
+  name: { type: "char", label: "Référence" },
+  partner_id: { type: "many2one", relation: "res.partner", label: "Client" },
+  amount_total: { type: "monetary", label: "Total" },
+  state: { type: "selection", label: "État", selection: [["draft", "Brouillon"], ["done", "Validé"]] },
+  active: { type: "boolean", label: "Actif" },
+};
+const gbArch = `<list><field name="name"/><field name="partner_id"/><field name="amount_total"/><field name="state"/><field name="active"/></list>`;
+const gbRecords = [
+  { id: 1, name: "SO001", partner_id: [1, "Alice"], amount_total: 100, state: "done", active: true },
+  { id: 2, name: "SO002", partner_id: [1, "Alice"], amount_total: 50.5, state: "draft", active: false },
+  { id: 3, name: "SO003", partner_id: [2, "Bob"], amount_total: 30, state: "draft", active: true },
+  { id: 4, name: "SO004", partner_id: false, amount_total: 10, state: "draft", active: false },
+];
+
+// many2one : groupes par libellé, somme du montant, groupe "Aucun"
+const gbTarget = document.createElement("div");
+document.body.appendChild(gbTarget);
+const gbHandle = await mountListView(gbTarget, gbArch, gbFields, gbRecords, null, "gb_model", "partner_id");
+await tick(); await tick();
+const headers = [...gbTarget.querySelectorAll("tr.o_group_header")];
+ok(headers.length === 3, "list-owl groupby : 3 groupes (Alice, Bob, Aucun)");
+ok(headers.map((h) => h.querySelector("span").textContent).join(",") === "Alice,Aucun,Bob",
+   "list-owl groupby : libellés triés avec « Aucun » en milieu alphabétique");
+ok(headers[0].querySelector(".o_group_count").textContent === "(2)", "list-owl groupby : compteur (2)");
+const aliceSum = headers[0].textContent;
+ok(aliceSum.includes("150.50"), "list-owl groupby : somme des montants du groupe (150.50)");
+ok(gbTarget.querySelectorAll("tr.o_data_row").length === 4, "list-owl groupby : 4 lignes déployées");
+
+// dépli/repli réactif au clic d'en-tête
+headers[0].dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+await tick();
+ok(gbTarget.querySelectorAll("tr.o_data_row").length === 2, "list-owl groupby : clic en-tête -> groupe replié (2 lignes restantes)");
+ok(headers[0] && gbTarget.querySelectorAll("tr.o_group_header")[0].querySelector(".fa-caret-right"),
+   "list-owl groupby : caret droit quand replié");
+gbTarget.querySelectorAll("tr.o_group_header")[0].dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+await tick();
+ok(gbTarget.querySelectorAll("tr.o_data_row").length === 4, "list-owl groupby : re-déplié");
+
+// selection -> libellés ; boolean -> Oui/Non
+const gbTarget2 = document.createElement("div");
+document.body.appendChild(gbTarget2);
+await mountListView(gbTarget2, gbArch, gbFields, gbRecords, null, "gb_model", "state");
+await tick(); await tick();
+const selHeaders = [...gbTarget2.querySelectorAll("tr.o_group_header")].map((h) => h.querySelector("span").textContent);
+ok(selHeaders.join(",") === "Brouillon,Validé", "list-owl groupby : groupes selection par libellé");
+gbTarget2.querySelectorAll("tr.o_group_header")[0].parentElement; // noop
+const gbTarget3 = document.createElement("div");
+document.body.appendChild(gbTarget3);
+await mountListView(gbTarget3, gbArch, gbFields, gbRecords, null, "gb_model", "active");
+await tick(); await tick();
+const boolHeaders = [...gbTarget3.querySelectorAll("tr.o_group_header")].map((h) => h.querySelector("span").textContent);
+ok(boolHeaders.join(",") === "Non,Oui", "list-owl groupby : groupes boolean Oui/Non");
+
+// groupBy null -> table à plat sans en-tête
+const gbTarget4 = document.createElement("div");
+document.body.appendChild(gbTarget4);
+await mountListView(gbTarget4, gbArch, gbFields, gbRecords, null, "gb_model", null);
+await tick(); await tick();
+ok(gbTarget4.querySelectorAll("tr.o_group_header").length === 0 && gbTarget4.querySelectorAll("tr.o_data_row").length === 4,
+   "list-owl groupby : null -> table à plat");
+
+// groupBy + état vide
+const gbTarget5 = document.createElement("div");
+document.body.appendChild(gbTarget5);
+await mountListView(gbTarget5, gbArch, gbFields, [], null, "gb_model", "partner_id");
+await tick(); await tick();
+ok(gbTarget5.textContent.includes("Aucun enregistrement."), "list-owl groupby : vide -> message unique");
+gbHandle.destroy();
+
 console.log("\n✅ TOUS LES TESTS LIST OWL PASSENT");
