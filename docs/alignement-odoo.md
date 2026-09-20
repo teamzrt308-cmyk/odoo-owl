@@ -73,6 +73,32 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
   repris d'une carte soeur, `patchCachedRecord` + cache liste ;
 - désactivé pour un group by char et en grille à plat (`canDrag`).
 
+### Shell webclient OWL (itération 14)
+- `Navbar` composant OWL (`navbar_component.js`) : le gabarit vanilla
+  NAVBAR_TEMPLATE et ses manipulations DOM de webclient.js supprimés ;
+  le composant consomme lui-même les bus `action:changed` (visibilité
+  par tag, assets Odoo, classes de body, titre d'app, menu horizontal
+  depuis le manifest, atterrissage naturel) et `user:info` (avatar,
+  nom, société, badges messages/activités) ; sections avec dropdowns
+  (entrées groupées), section active, menu mobile, bouton Accueil ;
+  classes et ids conservés à l'identique ;
+- `UserMenu` composant OWL embeddé dans la Navbar : menu principal,
+  vue « Mon compte » (profil + sécurité en cache, hors ligne),
+  déconnexion (confirmation si file non synchronisée -> doAction
+  login) ;
+- `HomeMenu` composant OWL (descripteur { mount } inchangé) : grille
+  réactive des apps (cache), recherche par libellé, pré-téléchargement,
+  refresh, dashboard_info -> profil + bus user:info ;
+- webclient.js réduit à l'assemblage : squelette, ActionService,
+  mount de la Navbar OWL, panneaux systray VANILLA restants (sync,
+  conflits, connectivité) montés DANS le DOM OWL, restoreState ;
+- pièges OWL traités : entités HTML (&larr;) interdites en XML,
+  t-foreach évalué même avec t-if (`entry.items or []`), props pas dans
+  le scope nu du template (`props.initial`), flèche obligatoire pour un
+  handler passé en prop (`onLogout="() => this.onUserLogout()"`),
+  mutation d'objet imbriqué de useState non réactive (remplacer
+  l'objet entier).
+
 ### Search avancé : filtres + favoris (itération 12)
 - `search/search_arch_parser.js` : arch `<search>` → filtres (attribut
   `domain`, quotes + tuples Python convertis en JSON) et filtres de
@@ -127,7 +153,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 9. SearchBar : filtres/favoris/group by FAITS (itération 12) ; reste l'auto-complétion des `<field>` du `<search>` et les domaines dynamiques (Odoo withSearch complet) ; engrenage options purement décoratif.
 
 ### Shell webclient
-11. **Navbar, systray, user_menu, home_menu, login** : encore impératifs (DOM vanilla) — dernière grosse migration OWL possible.
+11. Systray : panneaux sync/conflits/connectivité + login encore vanilla (navbar, user_menu et home_menu sont OWL depuis l'itération 14).
 12. **ActionService** : couvre act_window/home/form ; manque ir.actions.server/act_url/client actions, effets (Odoo action_service complet).
 13. **Chatter/mail** : stub non fonctionnel (thread/composer/followers/activités côté Odoo).
 14. Notifications/toasts : alert() natif, pas de notification service.
@@ -141,7 +167,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ---
 
 ## Ordre de reprise suggéré
-1. shell webclient OWL (navbar/home_menu/user_menu) ;
+1. panneaux systray OWL (sync/conflits/connectivité) + login OWL ;
 2. ActionService étendu + notifications.
 
 ## Écarts assumés (spécificité hors ligne, à ne PAS « corriger »)

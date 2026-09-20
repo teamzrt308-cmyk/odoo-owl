@@ -1,5 +1,18 @@
 /**
- * webclient/home_menu/home_menu.js)
+ * webclient/home_menu/home_menu.js
+ * ================================
+ * HomeMenu -- composant OWL, même architecture qu'Odoo 17
+ * (web/static/src/webclient/webclient/home_menu.js) : l'écran d'accueil
+ * est un composant enregistré dans le registre "actions" (descripteur
+ * { mount: mountHomeMenu }, contrat inchangé) dont le TEMPLATE est
+ * désormais du OWL déclaratif -- plus de innerHTML + appendChild
+ * vanilla : la grille des apps est un t-foreach alimenté par l'état
+ * réactif (cache installed_apps), la recherche filtre par libellé.
+ *
+ * La logique hors ligne reste identique : rafraîchissement des apps
+ * installées (401 -> login), pré-téléchargement d'une app
+ * (offline_prefetch_service), dashboard_info -> profil mis en cache +
+ * bus "user:info" (consommé par la Navbar OWL).
  */
 
 import { CONFIG, getApiKey, getSession, clearSession } from "../../core/browser/session.js";
@@ -10,24 +23,9 @@ import { registry } from "../../core/registry.js";
 import { bus } from "../../core/bus/bus_service.js";
 import { resolveNaturalLanding } from "../navbar/navbar.js";
 import { saveCachedProfile, getCachedProfile } from "../../core/user_service.js";
+import { mountOwlApp } from "../../owl/app.js";
 
 const CUSTOM_IMPLEMENTATIONS = {};
-
-const HOME_MENU_TEMPLATE = `
-  <main class="dashboard-container">
-    <div class="search-box">
-      <span class="search-icon">
-        <img src="assets/search.png" alt="Search" class="local-icon search-img">
-      </span>
-      <input type="text" placeholder="click here...">
-    </div>
-
-    <button id="refresh-modules-btn" class="refresh-btn">Actualiser les modules</button>
-    <p id="sync-status" class="sync-status"></p>
-
-    <div class="modules-grid" id="modules-grid"></div>
-  </main>
-`;
 
 const DASHBOARD_STYLE_ID = "offline-dashboard-style";
 
@@ -35,12 +33,10 @@ function loadDashboardStyle() {
   if (document.getElementById(DASHBOARD_STYLE_ID)) {
     return;
   }
-
   const link = document.createElement("link");
   link.id = DASHBOARD_STYLE_ID;
   link.rel = "stylesheet";
   link.href = "./static/src/webclient/home_menu/home_menu.css";
-
   document.head.appendChild(link);
 }
 
@@ -51,33 +47,104 @@ function unloadDashboardStyle() {
   }
 }
 
-function mountHomeMenu(container, params, env) {
-  loadDashboardStyle();
+export class HomeMenu extends owl.Component {
+  static props = {
+    params: { type: Object, optional: true },
+    env: { optional: true },
+  };
 
-  container.innerHTML = HOME_MENU_TEMPLATE;
-  container.classList.add("dashboard-body");
+  static template = owl.xml`
+    <main class="dashboard-container">
+      <div class="search-box">
+        <span class="search-icon">
+          <img src="assets/search.png" alt="Search" class="local-icon search-img"/>
+        </span>
+        <input type="text" placeholder="click here..." t-on-input="onSearchInput"/>
+      </div>
 
-  const grid = container.querySelector("#modules-grid");
-  const statusEl = container.querySelector("#sync-status");
-  const refreshBtn = container.querySelector("#refresh-modules-btn");
+      <button id="refresh-modules-btn" class="refresh-btn" t-esc="state.refreshing ? 'Actualisation...' : 'Actualiser les modules'" t-on-click="refreshInstalledApps"/>
+      <p id="sync-status" class="sync-status" t-esc="state.status"/>
 
-  async function openApp(app, cardEl) {
+      <div class="modules-grid" id="modules-grid">
+        <p t-if="state.apps.length === 0">Aucune app détectée. Connecte-toi en ligne au moins une fois.</p>
+        <p t-elif="filteredApps.length === 0" class="text-muted">Aucune app ne correspond à la recherche.</p>
+        <div t-else="" t-foreach="filteredApps" t-as="app" t-key="app.technical_name"
+             t-att-class="'module-card ' + (app.isReady ? 'ready' : 'disabled')"
+             t-att-style="state.loadingModule === app.technical_name ? 'opacity: 0.6;' : ''"
+             t-on-click="(ev) => this.onCardClick(ev, app)">
+          <div class="icon-wrapper"><img t-att-src="app.icon_base64 || 'assets/default-app.png'" t-att-alt="app.label"/></div>
+          <p t-esc="app.label"/>
+          <span class="module-badge" t-esc="app.isReady ? 'Disponible' : 'Non pris en charge'"/>
+          <button t-if="app.isReady" type="button" class="download-btn" t-esc="state.downloads[app.technical_name] || (app.isCached ? 'Mis à jour' : 'Télécharger')"
+                  t-on-click.stop="(ev) => this.onDownloadClick(ev, app)"/>
+        </div>
+      </div>
+    </main>`;
+
+  setup() {
+    this.state = owl.useState({
+      apps: [],
+      status: "",
+      refreshing: false,
+      query: "",
+      loadingModule: null,
+      // Statut du pré-téléchargement par module (label du bouton).
+      downloads: {},
+    });
+    owl.onMounted(() => {
+      loadDashboardStyle();
+      this.start();
+    });
+    owl.onWillDestroy(() => unloadDashboardStyle());
+  }
+
+  /** Apps filtrées par la recherche (libellé). */
+  get filteredApps() {
+    const q = this.state.query.trim().toLowerCase();
+    if (!q) return this.state.apps;
+    return this.state.apps.filter((app) => (app.label || "").toLowerCase().includes(q));
+  }
+
+  onSearchInput(ev) {
+    this.state.query = ev.target.value;
+  }
+
+  async start() {
+    // Comme l'ancien IIFE : cache d'abord, rafraîchissement, infos user.
+    await this.renderAppsFromCache();
+    await this.refreshInstalledApps();
+    await this.loadDashboardInfo();
+  }
+
+  async renderAppsFromCache() {
+    const apps = await this.prepareApps(await getCachedApps());
+    this.state.apps = apps;
+  }
+
+  /** Enrichit les apps brutes avec isReady/isCached (comme l'ancienne grille). */
+  async prepareApps(apps) {
+    const prepared = [];
+    for (const app of apps || []) {
+      const isReady = !!CUSTOM_IMPLEMENTATIONS[app.technical_name] || !!app.main_model;
+      const cachedManifest = isReady ? await getCachedModuleManifest(app.technical_name) : null;
+      prepared.push({ ...app, isReady, isCached: !!cachedManifest });
+    }
+    return prepared;
+  }
+
+  async onCardClick(ev, app) {
+    if (!app.isReady) return;
     const custom = CUSTOM_IMPLEMENTATIONS[app.technical_name];
     if (custom) {
-      env.doAction(custom.action);
+      this.props.env.doAction(custom.action);
       return;
     }
-
-    const downloadBtn = cardEl?.querySelector(".download-btn");
-    const originalLabel = cardEl?.querySelector("p")?.textContent;
-    if (cardEl) cardEl.style.opacity = "0.6";
-
+    this.state.loadingModule = app.technical_name;
     try {
       const manifest = await getModuleManifest(app.technical_name, getApiKey(), CONFIG.ODOO_BASE_URL);
       const landing = resolveNaturalLanding(manifest);
-
       if (landing) {
-        env.doAction({
+        this.props.env.doAction({
           tag: "list_view",
           module: app.technical_name,
           model: landing.model,
@@ -85,91 +152,41 @@ function mountHomeMenu(container, params, env) {
           view: landing.defaultView,
           label: landing.name,
         });
-
       } else {
-        env.doAction({ tag: "list_view", module: app.technical_name, model: app.main_model });
+        this.props.env.doAction({ tag: "list_view", module: app.technical_name, model: app.main_model });
       }
     } catch (err) {
       console.error(`Impossible de résoudre le menu de ${app.technical_name} :`, err);
-      env.doAction({ tag: "list_view", module: app.technical_name, model: app.main_model });
+      this.props.env.doAction({ tag: "list_view", module: app.technical_name, model: app.main_model });
     } finally {
-      if (cardEl) cardEl.style.opacity = "";
+      this.state.loadingModule = null;
     }
   }
 
-  async function renderModulesGrid(apps) {
-    grid.innerHTML = "";
-
-    if (!apps || apps.length === 0) {
-      grid.innerHTML = "<p>Aucune app détectée. Connecte-toi en ligne au moins une fois.</p>";
-      return;
-    }
-
-    for (const app of apps) {
-      const custom = CUSTOM_IMPLEMENTATIONS[app.technical_name];
-      const hasModel = !!app.main_model;
-      const isReady = custom || hasModel;
-
-      const card = document.createElement("div");
-      card.className = "module-card";
-      if (!isReady) card.classList.add("disabled");
-      else card.classList.add("ready");
-
-      const iconSrc = app.icon_base64 || "assets/default-app.png";
-      const cachedManifest = isReady ? await getCachedModuleManifest(app.technical_name) : null;
-      const isCached = !!cachedManifest;
-
-      card.innerHTML = `
-        <div class="icon-wrapper"><img src="${iconSrc}" alt="${app.label}" onerror="this.src='assets/default-app.png'"></div>
-        <p>${app.label}</p>
-        <span class="module-badge">${isReady ? "Disponible" : "Non pris en charge"}</span>
-        ${isReady ? `
-          <button class="download-btn" data-module="${app.technical_name}">
-            ${isCached ? "Mis à jour" : "Télécharger"}
-          </button>
-        ` : ""}
-      `;
-
-      if (isReady) {
-        card.addEventListener("click", (e) => {
-          if (e.target.classList.contains("download-btn")) return;
-          openApp(app, card);
-        });
-
-        const downloadBtn = card.querySelector(".download-btn");
-        downloadBtn.addEventListener("click", async (e) => {
-          e.stopPropagation();
-          downloadBtn.disabled = true;
-
-          try {
-            const apiKey = getApiKey();
-            await downloadFullApp(app.technical_name, apiKey, CONFIG.ODOO_BASE_URL, (message) => {
-              downloadBtn.textContent = message;
-            });
-            downloadBtn.textContent = "Disponible hors-ligne";
-          } catch (err) {
-            console.error(err);
-            downloadBtn.textContent = "Échec — réessayer";
-          } finally {
-            downloadBtn.disabled = false;
-          }
-        });
-      }
-
-      grid.appendChild(card);
+  async onDownloadClick(ev, app) {
+    const btn = ev.target;
+    this.state.downloads[app.technical_name] = "Téléchargement...";
+    try {
+      const apiKey = getApiKey();
+      await downloadFullApp(app.technical_name, apiKey, CONFIG.ODOO_BASE_URL, (message) => {
+        this.state.downloads[app.technical_name] = message;
+      });
+      this.state.downloads[app.technical_name] = "Disponible hors-ligne";
+    } catch (err) {
+      console.error(err);
+      this.state.downloads[app.technical_name] = "Échec — réessayer";
     }
   }
 
-  async function refreshInstalledApps() {
+  async refreshInstalledApps() {
     if (!navigator.onLine) {
-      statusEl.textContent = "Hors ligne — utilisation de la dernière liste connue";
-      renderModulesGrid(await getCachedApps());
+      this.state.status = "Hors ligne — utilisation de la dernière liste connue";
+      await this.renderAppsFromCache();
       return;
     }
 
-    refreshBtn.disabled = true;
-    refreshBtn.textContent = "Actualisation...";
-    statusEl.textContent = "";
+    this.state.refreshing = true;
+    this.state.status = "";
 
     try {
       const response = await fetch(`${CONFIG.ODOO_BASE_URL}/offline_sync/installed_apps`, {
@@ -179,7 +196,7 @@ function mountHomeMenu(container, params, env) {
       if (!response.ok) {
         if (response.status === 401) {
           clearSession();
-          env.doAction("login", { replace: true, clearStack: true });
+          this.props.env.doAction("login", { replace: true, clearStack: true });
           return;
         }
         throw new Error("Erreur serveur");
@@ -187,19 +204,17 @@ function mountHomeMenu(container, params, env) {
 
       const data = await response.json();
       await saveCachedApps(data.apps);
-      renderModulesGrid(data.apps);
-      statusEl.textContent = `${data.apps.length} app(s) installée(s) détectée(s)`;
+      this.state.apps = await this.prepareApps(data.apps);
+      this.state.status = `${data.apps.length} app(s) installée(s) détectée(s)`;
     } catch (err) {
-      statusEl.textContent = "Impossible de contacter Odoo — liste locale utilisée";
-      renderModulesGrid(await getCachedApps());
+      this.state.status = "Impossible de contacter Odoo — liste locale utilisée";
+      await this.renderAppsFromCache();
     } finally {
-      refreshBtn.disabled = false;
-      refreshBtn.textContent = "Actualiser les modules";
+      this.state.refreshing = false;
     }
   }
-  refreshBtn.addEventListener("click", refreshInstalledApps);
 
-  async function loadDashboardInfo() {
+  async loadDashboardInfo() {
     try {
       const response = await fetch(`${CONFIG.ODOO_BASE_URL}/offline_sync/dashboard_info`, {
         headers: { Authorization: `Bearer ${getApiKey()}` },
@@ -207,7 +222,7 @@ function mountHomeMenu(container, params, env) {
       if (!response.ok) {
         if (response.status === 401) {
           clearSession();
-          env.doAction("login", { replace: true, clearStack: true });
+          this.props.env.doAction("login", { replace: true, clearStack: true });
         }
         return;
       }
@@ -228,7 +243,6 @@ function mountHomeMenu(container, params, env) {
         unreadMessages: data.unread_messages,
         pendingActivities: data.pending_activities,
       });
-
     } catch (err) {
       const session = getSession();
       const cachedProfile = await getCachedProfile();
@@ -245,21 +259,26 @@ function mountHomeMenu(container, params, env) {
       console.warn("Impossible de charger les infos du tableau de bord (hors ligne ?)", err);
     }
   }
+}
 
-  (async () => {
-    await renderModulesGrid(await getCachedApps());
-    await refreshInstalledApps();
-    await loadDashboardInfo();
-  })();
-
+/**
+ * Montage du composant (contrat { mount } du registre "actions"
+ * conservé : async -> destroy, comme les autres actions du moteur).
+ */
+export async function mountHomeMenu(container, params, env) {
+  // Le CSS du dashboard est scopé sous #action-container.dashboard-body
+  // (home_menu.css) : la classe est posée sur le conteneur hôte, comme
+  // l'ancien moteur, et retirée à la destruction.
+  container.classList.add("dashboard-body");
+  const { destroy } = await mountOwlApp(HomeMenu, container, { params, env });
   return {
     destroy() {
-      refreshBtn.removeEventListener("click", refreshInstalledApps);
-      unloadDashboardStyle();
+      container.classList.remove("dashboard-body");
+      destroy();
     },
   };
 }
 
 registry.category("actions").add("home_menu", { mount: mountHomeMenu });
 
-export { mountHomeMenu };
+export { CUSTOM_IMPLEMENTATIONS };

@@ -42,7 +42,7 @@ function startServices() {
   return started;
 }
 
-function boot() {
+async function boot() {
   startServices();
 
   // Doit être fait avant tout rendu de formulaire/liste : les règles
@@ -57,7 +57,10 @@ function boot() {
     initialRouterState: router.current,
   });
 
-  const actionService = mountWebclient();
+  // mountWebclient est async depuis la migration de la navbar en OWL
+  // (it. 14) : le shell (navbar + panneaux systray) est monté avant la
+  // restauration de l'état routeur (dans mountWebclient).
+  const actionService = await mountWebclient();
   window.__pwa_debug__ = { registry, bus, router, actionService };
 }
 

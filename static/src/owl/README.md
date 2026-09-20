@@ -163,6 +163,13 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   `mountKanbanView(..., groupBy)` construit les colonnes (en-tête
   libellé + badge compteur, « Aucun » pour les valeurs vides), template
   compilé à trois branches (groupé / vide / à plat).
+- ✅ Shell webclient (itération 14) : `Navbar` composant OWL
+  (navbar_component.js -- gabarit vanilla et écouteurs bus de
+  webclient.js absorbés, ids/classes conservés pour les panneaux
+  systray vanilla restants), `UserMenu` OWL embeddé (menu + « Mon
+  compte » + déconnexion), `HomeMenu` OWL (grille des apps réactive,
+  recherche, descripteur { mount } inchangé) ; webclient.js réduit à
+  l'assemblage (ActionService + restoreState + panneaux vanilla).
 - ✅ Quick create + drag & drop kanban (itération 13) : le renderer
   gère le geste (« + Créer » par colonne, cartes draggable, colonnes
   surlignées o_kanban_drag_over) et délègue le modèle au contrôleur :

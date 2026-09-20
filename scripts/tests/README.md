@@ -4,7 +4,7 @@ Suites de non-régression du moteur (Node + jsdom). Exécution :
 
 ```bash
 cd scripts/tests && npm install   # une seule fois (jsdom)
-for t in test-fields-owl test-kanban-owl test-structure test-relational-owl test-form-owl test-controller-owl test-list-controller-owl test-list-owl test-kanban-controller-owl test-search-advanced-owl; do
+for t in test-fields-owl test-kanban-owl test-structure test-relational-owl test-form-owl test-controller-owl test-list-controller-owl test-list-owl test-kanban-controller-owl test-search-advanced-owl test-shell-owl; do
   node $t.mjs
 done
 ```
@@ -31,6 +31,10 @@ done
   parseListArch, tri, colonnes optionnelles persistées, sélection,
   badges decoration-*, formats, état vide, destroy, GROUP BY
   (en-têtes dépliables, comptes, sommes, libellés par type).
+- `test-shell-owl.mjs` : shell webclient OWL (itération 14) — Navbar
+  (visibilité, sections/dropdowns, atterrissage naturel, bus
+  user:info), UserMenu (Mon compte, déconnexion), HomeMenu (grille,
+  recherche, ouverture d'app), ancrages systray vanilla.
 - `test-search-advanced-owl.mjs` : search avancé (itération 12) —
   parseur `<search>`, menus Filtres/Favoris, facettes, filtrage ET,
   restauration d'un favori sur mount frais, repli selection.
