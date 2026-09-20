@@ -143,13 +143,24 @@ for (let i = 0; i < 200; i++) {
 ok(!!firstRow, "list : lignes rendues dans la zone du contrôleur");
 ok(container.textContent.includes("SO001") && container.textContent.includes("Alice"), "list : valeurs des enregistrements (name + m2o formaté)");
 ok(container.querySelector(".o_control_panel .o_breadcrumb").textContent.includes("Devis"), "list : fil d'ariane = label de l'action");
-ok(/1-20 \/ 22/.test(container.textContent), "list : pager « 1-20 / 22 »");
+// Le compteur du pager est alimenté par le mount async du renderer
+// (re-render réactif du ControlPanel) : on attend son application.
+let pagerOk = false;
+for (let i = 0; i < 200 && !pagerOk; i++) {
+  pagerOk = /1-20 \/ 22/.test(container.textContent);
+  if (!pagerOk) await tick();
+}
+ok(pagerOk, "list : pager « 1-20 / 22 »");
 ok(container.textContent.includes("hors-ligne"), "list : statut hors-ligne");
 
 // ── 3. Pagination ──
-container.querySelector(".o_control_panel .pager-next, .o_control_panel button[aria-label*=Suivant], .o_control_panel .o_pager_next").click();
-await tick(); await tick();
-ok(/21-22 \/ 22/.test(container.textContent), "list : page suivante -> « 21-22 / 22 »");
+container.querySelector(".o_control_panel .o_pager_next").click();
+let pagerOk2 = false;
+for (let i = 0; i < 200 && !pagerOk2; i++) {
+  pagerOk2 = /21-22 \/ 22/.test(container.textContent);
+  if (!pagerOk2) await tick();
+}
+ok(pagerOk2, "list : page suivante -> « 21-22 / 22 »");
 ok(container.querySelectorAll("tr.o_data_row").length === 2, "list : 2 lignes sur la 2e page");
 
 // ── 4. Recherche (debounce 300ms) ──
@@ -184,13 +195,14 @@ const kanbanBtn = [...container.querySelectorAll(".o_control_panel .o_cp_switch_
 ok(!!kanbanBtn, "list : bouton du view switcher kanban présent");
 kanbanBtn.click();
 let kanbanCard = null;
-for (let i = 0; i < 200; i++) {
+let pagerOk3 = false;
+for (let i = 0; i < 200 && !(kanbanCard && pagerOk3); i++) {
   kanbanCard = container.querySelector(".oe_kanban_card, .o_kanban_record");
-  if (kanbanCard) break;
-  await tick();
+  pagerOk3 = /1-20 \/ 22/.test(container.textContent);
+  if (!(kanbanCard && pagerOk3)) await tick();
 }
 ok(!!kanbanCard && kanbanCard.textContent.includes("SO001"), "list : bascule kanban -> cartes OWL rendues");
-ok(/1-20 \/ 22/.test(container.textContent), "list : pager recalculé après bascule");
+ok(pagerOk3, "list : pager recalculé après bascule");
 
 // Retour en liste (le renderer kanban est détruit sans erreur)
 const listBtn = [...container.querySelectorAll(".o_control_panel .o_cp_switch_buttons button")].find((b) => b.title === "List");

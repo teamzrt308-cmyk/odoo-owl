@@ -28,6 +28,15 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 ### Renderer kanban (itération 1)
 - `kanban_arch_parser.js` : **arch → template OWL compilé**, `KanbanRenderer` composant OWL (t-if/t-esc/t-foreach/t-set/t-attf, scope `record`).
 
+### Renderer list (itération 9)
+- `list_arch_parser.js::parseListArch` (arch -> colonnes, sans DOM) ;
+- `ListRenderer` composant OWL à **template statique** (comme le natif :
+  seul le kanban compile l'arch), tri, colonnes optionnelles persistées,
+  sélection, badges decoration-* ; `mountListView` -> { destroy },
+  branche list du contrôleur asynchrone avec jeton anti-course ;
+- `renderListView`/`renderListCell` vanilla supprimés -- tous les
+  renderers de vues sont OWL.
+
 ### Renderer form (itération 4)
 - `form_arch_parser.js::buildFormTemplate()` : **arch → template OWL** (scaffolding, groups `o_inner_group` avec colspan/newline, notebook réactif, h1, button_box, header buttons, statusbar) ;
 - `FormRenderer` composant OWL (emplacements `data-form-slot` remplis après render, `ready` = saisies garanties) ;
@@ -47,9 +56,9 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 ## ⏳ Manquant (écart vs Odoo 17)
 
 ### Vues
-1. **Renderer LIST encore vanilla** (`list_renderer.js`, DOM direct) — dernier renderer non OWL ; Odoo : `list_arch_parser` + ListRenderer OWL. (`list_column_prefs.js` à réintégrer au passage.)
-2. **Pivot / Graph** : placeholders « à venir » (Odoo : renderers + mesures/groupes).
-3. **Contrôleur kanban dédié** : aujourd'hui enveloppe de ListController — group by, colonnes dynamiques absents.
+1. **Pivot / Graph** : placeholders « à venir » (Odoo : renderers + mesures/groupes).
+2. **Contrôleur kanban dédié** : aujourd'hui enveloppe de ListController — group by, colonnes dynamiques absents.
+3. **Group by** (list/kanban) : absent.
 4. Calendrier, gantt, activité… : hors périmètre actuel (à trancher explicitement).
 
 ### Widgets de champ
@@ -61,7 +70,6 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 
 ### Couche recherche
 9. **SearchBar riche** : filtres/groupBy/favoris (Odoo withSearch + favorite_menu) — ici simple filtre texte ; engrenage options purement décoratif.
-10. **Group by** (list/kanban) : absent.
 
 ### Shell webclient
 11. **Navbar, systray, user_menu, home_menu, login** : encore impératifs (DOM vanilla) — dernière grosse migration OWL possible.
@@ -78,8 +86,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→7 poussées (27
 ---
 
 ## Ordre de reprise suggéré
-1. renderer LIST en OWL (clôt « 100 % des renderers ») ;
-2. contrôleur kanban dédié + group by ;
+1. contrôleur kanban dédié + group by ;
 4. shell webclient OWL (navbar/home_menu/user_menu) ;
 5. search avancé (filtres/groupBy/favoris) ;
 6. ActionService étendu + notifications.

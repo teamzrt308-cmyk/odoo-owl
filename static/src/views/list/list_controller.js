@@ -24,7 +24,7 @@ import { getSecurityInfo } from "../../core/user_service.js";
 import { getModuleManifest, resolveModelViews } from "../view_service.js";
 import { getListRecordsSmart, getPurchaseDashboardSmart } from "../../core/list_cache.js";
 import { formatCellValue } from "./list_renderer_utils.js";
-import { renderListView } from "./list_renderer.js";
+import { mountListView } from "./list_renderer.js";
 import { mountKanbanView } from "../kanban/kanban_renderer.js";
 import { renderPurchaseDashboard, buildPurchaseDashboardDomain } from "../purchase_dashboard.js";
 import { ControlPanel } from "../../search/control_panel/control_panel.js";
@@ -237,11 +237,30 @@ export class ListController extends owl.Component {
           kanbanTarget.textContent = "Impossible d'afficher la vue kanban.";
         }
       } else {
-        const viewEl = renderListView(
-          currentModelViews.list.arch, currentViewFieldsInfo, pageRecords, onRecordOpen, model
-        );
-        currentViewHandle = viewEl;
-        listHost.appendChild(viewEl);
+        // La liste est rendue par OWL (voir list_renderer.js) : le
+        // ListRenderer est un composant OWL à template statique alimenté
+        // par les colonnes parsées (list_arch_parser.js) -- même flux
+        // asynchrone + jeton anti-course que la branche kanban.
+        const listTarget = document.createElement("div");
+        listHost.appendChild(listTarget);
+        try {
+          const { destroy } = await mountListView(
+            listTarget,
+            currentModelViews.list.arch,
+            currentViewFieldsInfo,
+            pageRecords,
+            onRecordOpen,
+            model
+          );
+          if (token !== renderToken) {
+            destroy(); // la page a de nouveau changé pendant le mount -> on jette le rendu
+            return;
+          }
+          currentViewHandle = { _cleanup: destroy };
+        } catch (err) {
+          console.warn("[list_controller] Échec du rendu liste :", err);
+          listTarget.textContent = "Impossible d'afficher la vue liste.";
+        }
       }
 
       syncPager();
