@@ -19,6 +19,7 @@
 
 import { renderOwlField, computeReadonly, computeRequired } from "../../../owl/field_bridge.js";
 import { queueAction } from "../../../core/network/rpc_service.js";
+import { notifications } from "../../../core/notifications/notification_service.js";
 import { getReferenceRecords } from "../../../core/reference_cache.js";
 
 export class Many2oneFieldOwl extends owl.Component {
@@ -168,7 +169,7 @@ export class Many2oneFieldOwl extends owl.Component {
       if (this.props.onChange) this.props.onChange(tmpRef);
     } catch (err) {
       console.error("Création locale impossible:", err);
-      alert("Impossible de créer cet enregistrement localement.");
+      notifications.add("Impossible de créer cet enregistrement localement.", { title: "Création locale", type: "danger" });
     }
     this.closeDropdown();
   }

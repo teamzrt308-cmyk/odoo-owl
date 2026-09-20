@@ -163,6 +163,13 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   `mountKanbanView(..., groupBy)` construit les colonnes (en-tête
   libellé + badge compteur, « Aucun » pour les valeurs vides), template
   compilé à trois branches (groupé / vide / à plat).
+- ✅ Notifications + effets (itération 16) : `notification_service.js`
+  (registre "services", bus notification:changed) +
+  `NotificationContainer` OWL (toasts typés, boutons, sticky),
+  `rainbow_man.js` (effect_service + composant plein écran) ; les 9
+  alert() du moteur remplacés par des toasts ; ActionService étendu :
+  ir.actions.act_url/client/server (file + sync + toast, sans
+  navigation) et option effect de doAction.
 - ✅ Panneaux systray + login (itération 15) : `ConnectivityIndicator`,
   `SyncStatusPanel` et `ConflictPanel` composants OWL embeddés dans la
   Navbar (plus de mounts vanilla par sélecteurs ni createDropdown/

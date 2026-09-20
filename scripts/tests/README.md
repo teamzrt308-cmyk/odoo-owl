@@ -4,7 +4,7 @@ Suites de non-régression du moteur (Node + jsdom). Exécution :
 
 ```bash
 cd scripts/tests && npm install   # une seule fois (jsdom)
-for t in test-fields-owl test-kanban-owl test-structure test-relational-owl test-form-owl test-controller-owl test-list-controller-owl test-list-owl test-kanban-controller-owl test-search-advanced-owl test-shell-owl test-systray-login-owl; do
+for t in test-fields-owl test-kanban-owl test-structure test-relational-owl test-form-owl test-controller-owl test-list-controller-owl test-list-owl test-kanban-controller-owl test-search-advanced-owl test-shell-owl test-systray-login-owl test-notifications-action-service-owl; do
   node $t.mjs
 done
 ```
@@ -31,6 +31,9 @@ done
   parseListArch, tri, colonnes optionnelles persistées, sélection,
   badges decoration-*, formats, état vide, destroy, GROUP BY
   (en-têtes dépliables, comptes, sommes, libellés par type).
+- `test-notifications-action-service-owl.mjs` : notifications (it. 16)
+  — service add/close/sticky/boutons, conteneur de toasts, RainbowMan,
+  ActionService étendu (act_url, client, server -> file, effect).
 - `test-systray-login-owl.mjs` : systray OWL (itération 15) —
   connectivité (ping réel, dot), panneau sync (badges, réessai,
   suppression, bus), conflits (badge, doAction conflict_detail), login

@@ -9,6 +9,7 @@
  */
 
 import { resolveModelDisplayInfo } from "../../core/model_display.js";
+import { notifications } from "../../core/notifications/notification_service.js";
 import { getCachedRecord } from "../../core/record_cache.js";
 import { getReferenceRecordsSmart } from "../../core/reference_cache.js";
 import { db } from "../../core/orm_service.js";
@@ -275,7 +276,7 @@ function mountConflictDetail(container, params, env) {
         env.goBack();
       } catch (err) {
         console.error("Résolution du conflit échouée:", err);
-        alert("Impossible de résoudre ce conflit pour le moment : " + err.message);
+        notifications.add("Impossible de résoudre ce conflit pour le moment : " + err.message, { title: "Résolution de conflit", type: "danger" });
         keepLocalBtn.disabled = false;
         keepServerBtn.disabled = false;
       }

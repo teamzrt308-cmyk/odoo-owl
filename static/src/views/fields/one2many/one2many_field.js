@@ -31,6 +31,7 @@ import { getApiKey, CONFIG } from "../../../core/browser/session.js";
 import { getCatalogProductsSmart } from "../../../core/catalog_cache.js";
 import { getReferenceRecords } from "../../../core/reference_cache.js";
 import { db } from "../../../core/orm_service.js";
+import { notifications } from "../../../core/notifications/notification_service.js";
 import { detectCatalogFieldNames, renderProductCatalog } from "../product_catalog/product_catalog.js";
 
 import { CharFieldOwl } from "../char/char_field.js";
@@ -424,7 +425,7 @@ export class One2manyFieldOwl extends owl.Component {
       if (item.id) rowValues.id = item.id;
       const guard = checkOndeleteGuard(this.props.lineModel, rowValues);
       if (!guard.valid) {
-        alert(guard.message || "Suppression bloquée par une règle métier.");
+        notifications.add(guard.message || "Suppression bloquée par une règle métier.", { title: "Suppression", type: "danger" });
         return;
       }
     }
@@ -589,13 +590,13 @@ export class One2manyFieldOwl extends owl.Component {
     const renderedFieldSet = new Set(this.state.columns.map((c) => c.field));
     const { productFields, qtyField } = detectCatalogFieldNames(this.props.subFields, renderedFieldSet);
     if (productFields.length === 0 || !qtyField || !productFields.includes("product_id")) {
-      alert("Catalogue indisponible : champs produit/quantité non détectés pour ce modèle.");
+      notifications.add("Catalogue indisponible : champs produit/quantité non détectés pour ce modèle.", { title: "Catalogue", type: "warning" });
       return;
     }
 
     const partnerId = this.getPartnerIdFromForm();
     if (!partnerId) {
-      alert("Veuillez sélectionner un client (ou fournisseur) avant d'ouvrir le catalogue.");
+      notifications.add("Veuillez sélectionner un client (ou fournisseur) avant d'ouvrir le catalogue.", { title: "Catalogue", type: "info" });
       return;
     }
 
@@ -603,14 +604,14 @@ export class One2manyFieldOwl extends owl.Component {
       ? this.rootRef.el.closest("[data-model]")?.dataset.model
       : null;
     if (!catalogModel) {
-      alert("Impossible de déterminer le modèle du document courant.");
+      notifications.add("Impossible de déterminer le modèle du document courant.", { title: "Catalogue", type: "danger" });
       return;
     }
 
     const apiKey = getApiKey();
     const products = await getCatalogProductsSmart(catalogModel, partnerId, apiKey, CONFIG.ODOO_BASE_URL);
     if (!products || products.length === 0) {
-      alert("Aucun produit disponible dans le catalogue (hors-ligne sans cache, ou catalogue vide).");
+      notifications.add("Aucun produit disponible dans le catalogue (hors-ligne sans cache, ou catalogue vide).", { title: "Catalogue", type: "warning" });
       return;
     }
 

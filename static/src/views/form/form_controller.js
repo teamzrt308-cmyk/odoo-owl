@@ -18,6 +18,7 @@
  */
 
 import { bus } from "../../core/bus/bus_service.js";
+import { notifications } from "../../core/notifications/notification_service.js";
 import { CONFIG, getApiKey } from "../../core/browser/session.js";
 import { getModuleManifest, resolveModelViews } from "../view_service.js";
 import { getReferenceRecordsSmart } from "../../core/reference_cache.js";
@@ -374,7 +375,7 @@ export class FormController extends owl.Component {
    */
   async function onObjectButtonClick(methodName) {
     if (!currentRecordId) {
-      alert("Impossible d'exécuter cette action avant l'enregistrement de la fiche.");
+      notifications.add("Impossible d'exécuter cette action avant l'enregistrement de la fiche.", { title: "Action object", type: "warning" });
       return;
     }
 
@@ -428,10 +429,11 @@ export class FormController extends owl.Component {
         // believing the action fully completed.
         const pendingInfo = result.manualActions && result.manualActions[localUuid];
         if (pendingInfo) {
-          alert(
+          notifications.add(
             "L'action a été exécutée, mais nécessite une étape supplémentaire dans Odoo" +
             (pendingInfo.name ? ` (${pendingInfo.name})` : "") +
-            " — à compléter une fois connecté."
+            " — à compléter une fois connecté.",
+            { title: "Étape supplémentaire", type: "info", sticky: true }
           );
         }
 

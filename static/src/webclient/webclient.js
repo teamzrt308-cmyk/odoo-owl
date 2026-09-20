@@ -17,6 +17,8 @@ import "./conflict_detail/conflict_detail.js";
 import { router } from "../core/browser/router_service.js";
 import { createActionService } from "./actions/action_service.js";
 import { mountNavbar } from "./navbar/navbar_component.js";
+import { mountNotificationContainer } from "../core/notifications/notification_container.js";
+import { mountRainbowMan } from "../core/effects/rainbow_man.js";
 
 function detectTouchDevice() {
   if (navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches) {
@@ -44,22 +46,13 @@ function ensureWebclientSkeleton() {
   container.style.display = "flex";
   container.style.flexDirection = "column";
 
-  let toastContainer = document.getElementById("conflict-toast-container");
-  if (!toastContainer) {
-    toastContainer = document.createElement("div");
-    toastContainer.id = "conflict-toast-container";
-    toastContainer.style.cssText =
-      "position:fixed; top:60px; right:16px; z-index:2000; display:flex; flex-direction:column; gap:8px; max-width:320px;";
-    document.body.appendChild(toastContainer);
-  }
-
-  return { navbarRoot, container, toastContainer };
+  return { navbarRoot, container };
 }
 
 export async function mountWebclient() {
   detectTouchDevice();
 
-  const { navbarRoot, container, toastContainer } = ensureWebclientSkeleton();
+  const { navbarRoot, container } = ensureWebclientSkeleton();
   const actionService = createActionService(container);
 
   // Navbar OWL (itérations 14-15) : la visibilité, les assets, le
@@ -68,6 +61,11 @@ export async function mountWebclient() {
   // OWL embeddés. Le bind est nécessaire : doAction est appelé en
   // callback.
   await mountNavbar(navbarRoot, { doAction: actionService.doAction.bind(actionService) });
+
+  // Conteneurs OWL transverses, au-dessus de toutes les actions
+  // (toasts du service de notifications + RainbowMan des effets).
+  await mountNotificationContainer(navbarRoot);
+  await mountRainbowMan(navbarRoot);
 
   actionService.restoreState(router.current);
 

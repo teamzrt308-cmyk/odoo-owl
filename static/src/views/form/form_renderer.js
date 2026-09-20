@@ -18,6 +18,7 @@
  */
 
 import { mountOwlApp } from "../../owl/app.js";
+import { notifications } from "../../core/notifications/notification_service.js";
 import { parseFormViewArch, buildFormTemplate } from "./form_arch_parser.js";
 import { renderField } from "../fields/field.js";
 import { renderStatusbarField } from "../fields/statusbar/statusbar.js";
@@ -124,12 +125,12 @@ export class FormRenderer extends owl.Component {
     if (btn && btn.type === "object" && btn.name && typeof this.props.onObjectButtonClick === "function") {
       this.props.onObjectButtonClick(btn.name);
     } else {
-      alert("Cette action nécessite une connexion à Odoo — non disponible hors-ligne pour le moment.");
+      notifications.add("Cette action nécessite une connexion à Odoo — non disponible hors-ligne pour le moment.", { title: "Action indisponible", type: "warning" });
     }
   }
 
   onChatterClick() {
-    alert("Cette action nécessite une connexion à Odoo — non disponible hors-ligne pour le moment.");
+    notifications.add("Cette action nécessite une connexion à Odoo — non disponible hors-ligne pour le moment.", { title: "Action indisponible", type: "warning" });
   }
 }
 

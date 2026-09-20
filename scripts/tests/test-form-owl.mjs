@@ -33,7 +33,13 @@ globalThis.XMLSerializer = dom.window.XMLSerializer;
 globalThis.MutationObserver = dom.window.MutationObserver;
 globalThis.location = dom.window.location;
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
-globalThis.alert = () => alerts.push("alert");
+globalThis.alert = () => alerts.push("alert"); // conservé : plus utilisé, garde-fou (aucun appel attendu)
+
+// Itération 16 : les alert() sont remplacés par le service de
+// notifications -> on écoute le bus pour les assertions de toasts.
+const notifEvents = [];
+const { bus } = await import(REPO + "/static/src/core/bus/bus_service.js");
+bus.addEventListener("notification:changed", (ev) => notifEvents.push(ev.detail));
 
 class FakeTable {
   constructor(rows = []) { this.rows = rows; }
@@ -170,8 +176,9 @@ await tick();
 ok(lastObjectMethod === "action_confirm", "form : bouton type=object -> onObjectButtonClick(name)");
 headerButtons[1].dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 await tick();
-ok(alerts.length === 1, "form : bouton sans type -> message hors-ligne (alert)");
-alerts.length = 0;
+ok(notifEvents.length === 1 && notifEvents[0][0].type === "warning" && notifEvents[0][0].message.includes("non disponible hors-ligne"),
+   "form : bouton sans type -> toast warning (service de notifications)");
+notifEvents.length = 0;
 
 // ── 3. Statusbar délégué au widget de champ ──
 const statusbar = el.querySelector(".o_form_statusbar .o_field_statusbar");
@@ -219,8 +226,9 @@ ok(statBtn && statBtn.textContent === "Livraisons", "form : button_box rendu (re
 // ── 8. Chatter : alert au clic ──
 el.querySelector(".o-mail-Chatter-sendMessage").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 await tick();
-ok(alerts.length === 1, "form : bouton chatter -> message hors-ligne");
-alerts.length = 0;
+ok(notifEvents.length === 1 && notifEvents[0][0].title === "Action indisponible",
+   "form : bouton chatter -> toast (service de notifications)");
+notifEvents.length = 0;
 
 // ── 9. one2many monté + collectFormData (contrat sérialiseur) ──
 ok(!!el.querySelector('[data-one2many="order_line"] [data-o2m-root="true"]'), "form : hôte one2many présent");

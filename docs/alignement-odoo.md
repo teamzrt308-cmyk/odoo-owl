@@ -8,10 +8,10 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ## ✅ Terminé
 
 ### Socle technique
-- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v38).
+- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v39).
 - **Persistance hors ligne** : IndexedDB/Dexie — caches record/list/reference/catalog/manifest, file de sync (`rpc_service`), ledger local.
 - **Règles métier** : `model/rules_engine/` (onchange/compute génériques + spécifiques purchase/sale/stock, access, domain, default) portées de la logique serveur ; `core/py_js/` (evaluateSimpleCondition, isNodeVisible).
-- **Tests** : 12 suites jsdom versionnées (`scripts/tests/`, ~340 assertions), exécutables offline.
+- **Tests** : 13 suites jsdom versionnées (`scripts/tests/`, ~370 assertions), exécutables offline.
 
 ### Structure & flux (itération 1)
 - Registre `registry.category("views")` + dispatcher `views/view.js` (`resolveViewType` : view demandée → form si id/isNew → list) — même flux qu'Odoo (ActionService → registry views).
@@ -99,6 +99,28 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
   mutation d'objet imbriqué de useState non réactive (remplacer
   l'objet entier).
 
+### Notifications + ActionService étendu (itération 16)
+- `core/notifications/notification_service.js` : service de
+  notifications façon Odoo 17 (`notifications.add(message, { title,
+  type, sticky, autoCloseDelay, buttons, className })` -> id, close/
+  closeAll), singleton importable ET enregistré dans le registre
+  "services", état dans le service + bus `notification:changed` (le
+  composant remplace son état de premier niveau) ;
+- `core/notifications/notification_container.js` : NotificationContainer
+  OWL monté une fois par le webclient -- toasts (couleur/icône par
+  type, titre, message, croix, boutons d'action -> onClick + fermeture) ;
+- `core/effects/rainbow_man.js` : effect_service + RainbowMan OWL
+  (équivalent du couple effect_service/rainbow_man d'Odoo) -- plein
+  écran, auto-dismiss, clic pour fermer ;
+- ActionService : `ir.actions.act_url` (window.open _blank/_self),
+  `ir.actions.client` (dispatch vers le tag du registre "actions"),
+  `ir.actions.server` (queueMethodCall -> file + sync si en ligne +
+  toast success/danger, PAS de navigation), option `effect` de
+  doAction -> RainbowMan ;
+- les 9 `alert()` natifs remplacés par des toasts (many2one, one2many
+  ×5, form_renderer ×2, form_controller ×2, conflict_detail) ;
+  div mort #conflict-toast-container retiré du squelette.
+
 ### Panneaux systray OWL + login (itération 15)
 - `ConnectivityIndicator` OWL : point de statut (rouge/vert), ping réel
   (fetch + timeout 3 s) périodique et aux événements online/offline ;
@@ -172,9 +194,9 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 
 ### Shell webclient
 11. Systray messaging : boutons Messages/Activités de la navbar décoratifs (pas de menu, comme le chatter stub).
-12. **ActionService** : couvre act_window/home/form ; manque ir.actions.server/act_url/client actions, effets (Odoo action_service complet).
+12. ActionService : ir.actions.server/act_url/client + effets FAITS (itération 16) ; reste le wizard (ir.actions.act_window target=new en pop-up) et l'auto-dismiss post-action d'Odoo.
 13. **Chatter/mail** : stub non fonctionnel (thread/composer/followers/activités côté Odoo).
-14. Notifications/toasts : alert() natif, pas de notification service.
+14. Notifications : service + toasts OWL FAITS (itération 16) ; pas encore de canal "discussions" (liée au chatter stub).
 15. **i18n** : chaînes françaises en dur (Odoo : `_t` + catalogues).
 16. Router : hash simple vs service router Odoo (état riche, pushState sémantique).
 
@@ -185,9 +207,8 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ---
 
 ## Ordre de reprise suggéré
-1. ActionService étendu + notifications (toasts OWL) ;
-2. chatter/mail stub, widgets additionnels ;
-3. i18n, router, e2e navigateur, a11y.
+1. chatter/mail stub, widgets additionnels ;
+2. i18n, router, e2e navigateur, a11y.
 
 ## Écarts assumés (spécificité hors ligne, à ne PAS « corriger »)
 - Champs montés par `field_bridge` (contrat DOM sérialiseur) plutôt que tags `<Field>` OWL ;
