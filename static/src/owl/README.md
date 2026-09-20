@@ -134,7 +134,15 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   OWL porte les trois zones (control panel / statut / hôte renderer) ;
   la logique hors ligne (sync, règles, ledger) vit dans setup() et le
   cleanup est garanti par onWillDestroy.
-- ⏳ Reste : list_controller (encore impératif, même contrat),
-  control_panel OWL.
+- ✅ `views/list/list_controller.js` : le CONTRÔLEUR list (et kanban,
+  qui le partage) est un composant OWL (`ListController`) --
+  `list_view.js` expose `{ Controller }` et le descripteur kanban
+  (kanban_view.js) enveloppe ListController en forçant view="kanban".
+  Quatre zones OWL (control panel / statut / dashboard / liste) ; la
+  logique hors ligne (pagination, recherche, view-switcher, dashboard
+  achats, record rules) vit dans setup(), cleanup garanti par
+  onWillDestroy.
+- ⏳ Reste : control_panel OWL (breadcrumb/search/pager encore
+  générés en DOM vanilla par buildControlPanel).
 
 

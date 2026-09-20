@@ -18,7 +18,8 @@ import "./webclient/home_menu/home_menu.js";
 // (form_arch_parser::buildFormTemplate) sont des composants OWL dont le
 // template est compilé depuis l'arch ; le contrôleur form est lui-même
 // un composant OWL monté par views/view.js via le descripteur
-// { Controller } de la vue. Voir static/src/owl/README.md.
+// { Controller } de la vue — le contrôleur list (et kanban) suit le
+// même modèle. Voir static/src/owl/README.md.
 
 // Fusionné depuis core/browser/service_worker.js : chez Odoo l'enregistrement
 // du Service Worker se fait directement au boot, sans fichier dédié.
