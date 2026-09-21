@@ -2,7 +2,7 @@
  * service-worker.js
  */
 
-const CACHE_NAME = "offline-sync-standalone-v44";
+const CACHE_NAME = "offline-sync-standalone-v45";
 
 const ASSETS_TO_CACHE = [
   "./",
@@ -13,6 +13,7 @@ const ASSETS_TO_CACHE = [
   "./static/lib/popper.js",
   "./static/src/webclient/home_menu/home_menu.css",
   "./css/web.assets_web.min.css",
+  "./css/odoo_widgets.css",
   "./css/web.assets_frontend.min.css",
   "./css/fonts/fontawesome-webfont.woff",
   "./css/fonts/fontawesome-webfont.woff2",

@@ -41,22 +41,40 @@ function compileCardTemplate(templateNode, doc) {
 
   // <field name="x"/> -> <t t-esc="record.x.value"/> (les attributs t-if
   // éventuels du champ sont conservés -- OWL les gère nativement).
+  // Images dynamiques STATIQUES -> placeholder hors ligne (comportement
+  // historique). Passe AVANT la transform des champs : le widget image
+  // recrée ensuite des <img t-att-src> dynamiques qu'il faut laisser.
+
+  clone.querySelectorAll("img[t-att-src]").forEach((img) => {
+    img.setAttribute("src", KANBAN_IMAGE_PLACEHOLDER);
+    img.removeAttribute("t-att-src");
+  });
+
+  // NOTE : cette passe tourne APRÈS la passe des <img> statiques
+  // (sinon elle recréerait des t-att-src que celle-ci écraserait).
   clone.querySelectorAll("field").forEach((fieldNode) => {
     const fieldName = fieldNode.getAttribute("name");
-    const replacement = doc.createElement("t");
-    replacement.setAttribute("t-esc", `record.${fieldName}.value`);
+    let replacement;
+    if (fieldNode.getAttribute("widget") === "image") {
+      // Widget image : la valeur base64 du cache local devient une vraie
+      // image de carte (placeholder si vide) -- comme le widget image Odoo.
+      replacement = doc.createElement("img");
+      replacement.setAttribute("class", "o_kanban_image_inner_pic");
+      replacement.setAttribute("alt", fieldName);
+      replacement.setAttribute(
+        "t-att-src",
+        `record.${fieldName}.raw_value ? 'data:image/png;base64,' + record.${fieldName}.raw_value : '${KANBAN_IMAGE_PLACEHOLDER}'`
+      );
+    } else {
+      replacement = doc.createElement("t");
+      replacement.setAttribute("t-esc", `record.${fieldName}.value`);
+    }
     for (const attr of Array.from(fieldNode.attributes)) {
       if (attr.name.startsWith("t-")) {
         replacement.setAttribute(attr.name, attr.value);
       }
     }
     fieldNode.replaceWith(replacement);
-  });
-
-  // Images dynamiques -> placeholder hors ligne (comportement historique).
-  clone.querySelectorAll("img[t-att-src]").forEach((img) => {
-    img.setAttribute("src", KANBAN_IMAGE_PLACEHOLDER);
-    img.removeAttribute("t-att-src");
   });
 
   const serializer = new XMLSerializer();

@@ -8,7 +8,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ## ✅ Terminé
 
 ### Socle technique
-- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v44).
+- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v45).
 - **Persistance hors ligne** : IndexedDB/Dexie — caches record/list/reference/catalog/manifest, file de sync (`rpc_service`), ledger local.
 - **Règles métier** : `model/rules_engine/` (onchange/compute génériques + spécifiques purchase/sale/stock, access, domain, default) portées de la logique serveur ; `core/py_js/` (evaluateSimpleCondition, isNodeVisible).
 - **Tests** : 14 suites jsdom versionnées (`scripts/tests/`, ~395 assertions), exécutables offline.
@@ -199,6 +199,34 @@ l'ORM d'Odoo -- cette itération comble les trois trous restants :
 ### Contrôleurs (itérations 5-6, 11)
 - `FormController`, `ListController`, `KanbanController` (**dédié** depuis l'itération 11, descripteur `{ Controller }`) : **composants OWL**, zones en template, logique offline intacte (sync, règles document, ledger, actions objet, sauvegarde, pagination, recherche, dashboard), `onMounted`/`onWillDestroy`.
 - `view.js` monte `descriptor.Controller` (props params + env), comme le webclient natif.
+
+### Paquet de widgets de champ (itération 21)
+- **Registre `views/fields/widget_registry.js`** : l'attribut `widget="…"`
+  de l'arch a priorité sur le rendu par type, comme la clé widget du
+  webclient Odoo 17 ;
+- **10 widgets rendus** (form + cellules de liste + carte kanban) :
+  `priority` (étoiles cliquables en édition, ★ en liste),
+  `badge` (pastille), `boolean_toggle` (interrupteur Bootstrap, checkbox
+  native = contrat sérialiseur), `radio` (selection en boutons radio),
+  `image` (aperçu base64 du cache + upload local FileReader + placeholder
+  hors ligne), `email`/`phone`/`url` (saisie + bouton-lien mailto:/tel:/
+  https local), `handle` (poignée de réordonnancement rendue en liste,
+  invisible en form), `statinfo` (tuile button_box : icône + compteur +
+  libellé, valeur injectée au compile-time) ;
+- **Contrat sérialiseur respecté** : chaque widget éditable expose
+  `#field-<name>` (hidden input ou checkbox native) — collectFormData /
+  setElementValue ne changent pas ;
+- **Kanban** : `<field widget="image"/>` de l'arch devient une vraie
+  `<img>` base64 (placeholder si vide) ; la passe placeholder des images
+  statiques tourne AVANT la transform des champs (sinon elle écrase les
+  images dynamiques) ;
+- **Listes** : `parseListArch` conserve l'attribut widget dans les
+  colonnes ; la colonne handle n'est plus supprimée (poignée rendue) ;
+- écart restant : le glisser-déposer de réordonnancement des lignes
+  (handle) n'est pas encore câblé ; le clic sur une tuile statinfo
+  (action serveur) reste à traiter avec le button_box fonctionnel ;
+- `css/odoo_widgets.css` (styles spécifiques) chargé par index.html et
+  pré-caché par le service-worker.
 
 ### Workflow hors ligne : boutons objet + calculs enrichis (itération 20)
 - **Nouveau bucket `object_action`** dans le moteur (`rules/workflow_rules.js`)

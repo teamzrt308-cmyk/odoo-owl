@@ -84,13 +84,13 @@ const records = [
   const parsed = parseListArch(archUsable, fieldsInfo);
   ok(!parsed.error && Array.isArray(parsed.columns), "list-owl : parseListArch -> colonnes");
   const names = parsed.columns.map((c) => c.field);
-  ok(!names.includes("sequence"), "list-owl : widget=handle exclu");
+ok(names.includes("sequence"), "list-owl : colonne handle CONSERVÉE (poignée, it. 21)");
   // internal_note apparaît 2x dans l'arch : column_invisible='1' exclu,
   // la déclaration optional=hide incluse (une seule fois au final).
   ok(names.filter((n) => n === "internal_note").length === 1, "list-owl : column_invisible='1' exclu, optional gardé");
-  ok(names.join(",") === "name,partner_id,amount_total,state,active,internal_note",
-     "list-owl : ordre des colonnes de l'arch (optional=hide gardé)");
-  ok(parsed.columns[0].label === "Numéro", "list-owl : label depuis l'attribut string");
+  ok(names.join(",") === "sequence,name,partner_id,amount_total,state,active,internal_note",
+     "list-owl : ordre des colonnes de l'arch (handle gardé, optional=hide inclus)");
+  ok(parsed.columns.find((c) => c.field === "name").label === "Numéro", "list-owl : label depuis l'attribut string");
   const stateCol = parsed.columns.find((c) => c.field === "state");
   ok(stateCol.decoration.success === "state == 'done'", "list-owl : decorations extraites de l'arch");
   const bad = parseListArch("<not-xml", fieldsInfo);
@@ -106,31 +106,32 @@ const { destroy } = await mountListView(target, archUsable, fieldsInfo, records,
 await tick(); await tick();
 
 const rows = () => [...target.querySelectorAll("tr.o_data_row")];
+ok(!!target.querySelector(".o_row_handle"), "list-owl : colonne handle -> poignée rendue (it. 21)");
 ok(rows().length === 2, "list-owl : 2 lignes rendues");
-ok(rows()[0].querySelector("td.o_data_cell").textContent === "SO002", "list-owl : cellule char");
-ok(rows()[1].querySelector("td.o_data_cell").textContent === "SO001", "list-owl : ordre des records (pas de tri initial)");
+ok(rows()[0].querySelectorAll("td.o_data_cell")[1].textContent === "SO002", "list-owl : cellule char");
+ok(rows()[1].querySelectorAll("td.o_data_cell")[1].textContent === "SO001", "list-owl : ordre des records (pas de tri initial)");
 ok(target.querySelector('[data-name="partner_id"]') && target.querySelector('[data-name="partner_id"]').textContent === "Client",
    "list-owl : en-tête avec label fields_get");
-ok(rows()[1].cells[2].textContent === "Alice", "list-owl : tuple m2o -> libellé");
-const money = rows()[0].cells[3];
+ok(rows()[1].cells[3].textContent === "Alice", "list-owl : tuple m2o -> libellé");
+const money = rows()[0].cells[4];
 ok(money.textContent === "120.50" && money.querySelector(".fw-bold"), "list-owl : monetary -> toFixed(2) + gras");
-const badge = rows()[0].cells[4].querySelector(".badge");
+const badge = rows()[0].cells[5].querySelector(".badge");
 ok(badge && badge.textContent === "Brouillon" && badge.className.includes("text-bg-danger"),
    "list-owl : badge selection + decoration-danger");
-const badge2 = rows()[1].cells[4].querySelector(".badge");
+const badge2 = rows()[1].cells[5].querySelector(".badge");
 ok(badge2.className.includes("text-bg-success"), "list-owl : decoration-success sur l'autre état");
-ok(rows()[0].cells[5].textContent === "✓" && rows()[1].cells[5].textContent === "",
+ok(rows()[0].cells[6].textContent === "✓" && rows()[1].cells[6].textContent === "",
    "list-owl : boolean -> ✓/vide");
 ok(!target.querySelector('[data-name="internal_note"]'), "list-owl : colonne optional=hide masquée par défaut");
 
 // ── 3. Tri ──
 target.querySelector('th[data-name="name"]').dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 await tick();
-ok(rows()[0].querySelector("td.o_data_cell").textContent === "SO001", "list-owl : tri asc sur name");
+ok(rows()[0].querySelectorAll("td.o_data_cell")[1].textContent === "SO001", "list-owl : tri asc sur name");
 ok(target.querySelector('th[data-name="name"] .fa-angle-down:not(.opacity-0)'), "list-owl : icône asc");
 target.querySelector('th[data-name="name"]').dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 await tick();
-ok(rows()[0].querySelector("td.o_data_cell").textContent === "SO002", "list-owl : second clic -> tri desc");
+ok(rows()[0].querySelectorAll("td.o_data_cell")[1].textContent === "SO002", "list-owl : second clic -> tri desc");
 
 // ── 4. Colonnes optionnelles : engrenage + persistance ──
 const gear = target.querySelector(".o_optional_columns_dropdown_toggle");

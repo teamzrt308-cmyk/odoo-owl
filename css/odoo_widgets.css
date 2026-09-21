@@ -1,0 +1,14 @@
+/* Widgets de champ additionnels (itération 21) -- petits compléments aux
+   assets Odoo embarqués, mêmes conventions de classes. */
+.o_priority .o_priority_star { font-size: 1.05em; line-height: 1; }
+.o_priority_display { color: #f0ad4e; letter-spacing: 1px; }
+.o_tag_badge { background-color: #6c757d; color: #fff; }
+.o_boolean_toggle .form-check-input { width: 2.2em; height: 1.15em; cursor: pointer; }
+.o_field_radio input[type="radio"] { accent-color: #1f3864; }
+.o_field_image .o_image_preview { max-height: 92px; max-width: 160px; object-fit: cover; }
+.o_list_image { height: 26px; width: 26px; object-fit: cover; }
+.o_row_handle { cursor: grab; opacity: 0.6; }
+.oe_stat_button { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.7rem; }
+.oe_stat_button .o_stat_icon { font-size: 1.5rem; color: #1f3864; opacity: 0.85; }
+.oe_stat_button .o_stat_info { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; }
+.oe_stat_button .o_stat_text { white-space: nowrap; }

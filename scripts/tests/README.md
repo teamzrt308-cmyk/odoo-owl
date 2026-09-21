@@ -65,6 +65,11 @@ done
   présent) → form fiche 42 → save (file hors ligne, 0 erreur console
   inattendue). Vérifie le câblage croisé de TOUTES les itérations.
 
+- `test-widgets-owl.mjs` : widgets de champ (itération 21) — priority
+  (étoiles + clic), badge, boolean_toggle, radio, image (base64 +
+  placeholder), email/phone/url (liens locaux), handle (liste), statinfo
+  (tuile button_box), contrat sérialiseur (#field-<name>), cellules de
+  liste et carte kanban image.
 - `test-workflow-rules-owl.mjs` : workflow hors ligne (itération 20) —
   verrous `fromStates` (canRunObjectAction), états optimistes
   (computeOptimisticStateUpdate, fusion stock_effect + object_action),

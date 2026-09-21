@@ -46,8 +46,7 @@ export function parseListArch(archXml, fieldsInfo) {
       const fname = fieldNode.getAttribute("name");
       if (!fname || !fieldsInfo[fname]) continue;
 
-      const widget = fieldNode.getAttribute("widget");
-      if (widget === "handle") continue;
+      const widget = fieldNode.getAttribute("widget") || null;
 
       const columnInvisible = fieldNode.getAttribute("column_invisible");
       if (columnInvisible === "1" || columnInvisible === "True") continue;
@@ -60,6 +59,7 @@ export function parseListArch(archXml, fieldsInfo) {
           fieldsInfo[fname].label ||
           fname,
         optional,
+        widget,
         decoration: extractDecorations(fieldNode),
       });
     }

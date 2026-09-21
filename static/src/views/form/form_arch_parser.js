@@ -87,8 +87,26 @@ function emitButtonBox(node, ctx) {
     .filter((c) => c.tagName === "button")
     .map((btnNode) => {
       const label = btnNode.getAttribute("string") || "";
-      if (!label) return "";
-      return `<button type="button" class="oe_stat_button btn"><div class="o_stat_info"><span class="o_stat_text">${escapeXml(label)}</span></div></button>`;
+      const icon = btnNode.getAttribute("icon") || "fa-bars";
+      // <field widget="statinfo" string="Transferts"/> : compteur lu dans
+      // les valeurs initiales du record (compile-time) -- tuile Odoo
+      // icône + nombre + texte.
+      const statField = Array.from(btnNode.querySelectorAll("field")).find(
+        (f) => f.getAttribute("widget") === "statinfo"
+      );
+      let inner = "";
+      if (statField) {
+        const fname = statField.getAttribute("name");
+        const raw = (ctx.initialValues || {})[fname];
+        const value = raw === undefined || raw === false ? 0 : raw;
+        const text = statField.getAttribute("string") || label || fname;
+        inner = `<div class="o_stat_info"><span class="o_stat_value fw-bold fs-5">${escapeXml(String(value))}</span><span class="o_stat_text text-muted small">${escapeXml(text)}</span></div>`;
+      } else if (label) {
+        inner = `<div class="o_stat_info"><span class="o_stat_text">${escapeXml(label)}</span></div>`;
+      } else {
+        return "";
+      }
+      return `<button type="button" class="oe_stat_button btn" title="${escapeXml(label)}"><i class="fa fa-fw ${escapeXml(icon)} o_stat_icon"></i>${inner}</button>`;
     })
     .join("");
   return buttons ? `<div class="oe_button_box">${buttons}</div>` : "";

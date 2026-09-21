@@ -19,6 +19,7 @@ import { renderMonetaryField } from "./monetary/monetary_field.js";
 import { renderMany2oneField } from "./many2one/many2one_field.js";
 import { renderMany2manyTagsField } from "./many2many_tags/many2many_tags_field.js";
 import { renderOne2manyField } from "./one2many/one2many_field.js";
+import { WIDGET_RENDERERS } from "./widget_registry.js";
 
 const SUPPORTED_FIELD_WIDGETS = {
   char: renderCharField,
@@ -66,6 +67,11 @@ export function renderField(node, fieldsInfo, initialValues, securityContext, ha
 
   const initialValue = initialValues ? initialValues[fieldName] : undefined;
 
+  // Widget explicite de l'arch (widget="priority", "image"...) : il a
+  // priorité sur le rendu par type, comme la clé widget chez Odoo 17.
+  const widgetAttr = node.getAttribute("widget");
+  const widgetRenderer = widgetAttr ? WIDGET_RENDERERS[widgetAttr] : null;
+
   // "New" simulation (100% offline): a read-only field (e.g., sequence
   // name) that is empty in creation mode never displays an empty input in
   // Odoo, but rather the text "New"—without a network call.
@@ -83,7 +89,9 @@ export function renderField(node, fieldsInfo, initialValues, securityContext, ha
     inputEl.setAttribute("data-field", fieldName);
     inputEl.textContent = "Nouveau";
   } else {
-    inputEl = renderer(fieldName, info, node, initialValue, initialValues);
+    inputEl = widgetRenderer
+      ? widgetRenderer(fieldName, info, node, initialValue, initialValues)
+      : renderer(fieldName, info, node, initialValue, initialValues);
   }
 
   applyDynamicAttrs(node, inputEl, initialValues);
