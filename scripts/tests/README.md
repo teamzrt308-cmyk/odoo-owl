@@ -65,4 +65,11 @@ done
   présent) → form fiche 42 → save (file hors ligne, 0 erreur console
   inattendue). Vérifie le câblage croisé de TOUTES les itérations.
 
+- `audit-manifest.mjs` : **audit d'un manifest RÉEL** (export Dexie de
+  la table `module_manifests`) — parse puis (avec `--mount`) montage
+  runtime de chaque arch list/kanban/form avec enregistrements factices ;
+  signale archs cassées, widgets utilisés, menus orphelins. Usage :
+  `node audit-manifest.mjs [--mount] export.json` (0/168 puis 168/168
+  après itération 19).
+
 Ces tests utilisent un stub Dexie minimal et ne touchent jamais le réseau.

@@ -8,7 +8,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ## ✅ Terminé
 
 ### Socle technique
-- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v41).
+- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v42).
 - **Persistance hors ligne** : IndexedDB/Dexie — caches record/list/reference/catalog/manifest, file de sync (`rpc_service`), ledger local.
 - **Règles métier** : `model/rules_engine/` (onchange/compute génériques + spécifiques purchase/sale/stock, access, domain, default) portées de la logique serveur ; `core/py_js/` (evaluateSimpleCondition, isNodeVisible).
 - **Tests** : 14 suites jsdom versionnées (`scripts/tests/`, ~395 assertions), exécutables offline.
@@ -199,6 +199,37 @@ l'ORM d'Odoo -- cette itération comble les trois trous restants :
 ### Contrôleurs (itérations 5-6, 11)
 - `FormController`, `ListController`, `KanbanController` (**dédié** depuis l'itération 11, descripteur `{ Controller }`) : **composants OWL**, zones en template, logique offline intacte (sync, règles document, ledger, actions objet, sauvegarde, pagination, recherche, dashboard), `onMounted`/`onWillDestroy`.
 - `view.js` monte `descriptor.Controller` (props params + env), comme le webclient natif.
+
+### Audit du manifest RÉEL (itération 19)
+Constat sur l'export réel de la table `module_manifests`
+(`offline_sync_db_module_manifests.json` — purchase, sale_management,
+stock ; 24 modèles, 56 archs par type de vue) :
+- **forme conforme au moteur** : clés `module/models/fields/views/menus`,
+  `views[model].default` + `by_action` (clés = ids d'action **numériques**,
+  menus `action_id` numériques aussi) ;
+- **lignes one2many** : le manifest n'embarque PAS les modèles de lignes
+  (sale.order.line…) — leurs champs voyagent dans `sub_fields` du champ
+  parent, que `one2many_field.js` consomme déjà ;
+- **pas d'arch `<search>`** (0/168) : repli prévu — filtres dérivés des
+  champs `selection` + group by candidats depuis les colonnes de liste ;
+- **binaires exclues** (`image_128`…) : déclarées dans les archs mais
+  absentes de `fields` ;
+- **menus orphelins** (16) : rapports/paramètres/attributs référencent
+  des modèles sans vues -> atterrissage gracieux à l'accueil ;
+- **graph/pivot** présents dans `by_action` -> placeholder « à venir ».
+
+Correctifs révélés par l'audit (`scripts/tests/audit-manifest.mjs
+--mount` : parse + montage runtime de chaque arch, 168/168 OK) :
+- `KanbanRenderer` : helpers d'arch `kanban_image` (placeholder local)
+  et `kanban_color` (palette o_kanban_color_0..10) exposés aux templates ;
+- `buildKanbanRecordProxy` : couvre les champs DÉCLARÉS dans l'arch même
+  absents de `fields_info` (sinon `record.x.value` explose) ;
+- `parseKanbanArch` : enregistre les sous-templates `t-name`
+  (`kanban-menu`, `SalesTeamDashboardGraph`…) référencés par `t-call` ;
+- `evaluateSimpleCondition` (py_js) : `context.get('clé', défaut)`
+  évalué au défaut ; évaluateur par scope `with` — un champ nommé comme
+  un mot réservé JS (`res.partner.function`) cassait TOUTES les
+  évaluations de visibilité (SyntaxError « Unexpected token 'function' »).
 
 ### Test global de bout en bout (itération 18)
 - `test-global-boot-owl.mjs` : boot du `main.js` réel dans jsdom (PWA complète, stubs Dexie/réseau) — login → home → liste → group by → kanban → form → save en file, 0 erreur console inattendue ;

@@ -144,9 +144,21 @@ export function parseKanbanArch(archXml) {
   }
 
   const cardInner = compileCardTemplate(templateNode, doc);
+  // Sous-templates (<t t-name="kanban-menu">, "SalesTeamDashboardGraph"…)
+  // : les archs Odoo 17 réelles en contiennent et les cartes les
+  // référencent via <t t-call="..."/> -- ils doivent être enregistrés
+  // comme templates OWL à part entière sous peine de « Missing
+  // template » au mount (chacun est une entrée de la map templates).
+  const subTemplates = {};
+  for (const t of doc.querySelectorAll("templates > t[t-name]")) {
+    const name = t.getAttribute("t-name");
+    if (!name || name === "kanban-box") continue;
+    subTemplates[name] = `<t t-name="${name}">${compileCardTemplate(t, doc)}</t>`;
+  }
   return {
     templateName: RENDERER_TEMPLATE_NAME,
     templateXml: buildRendererTemplate(cardInner),
+    subTemplates,
     // group by par défaut de l'arch (default_group_by, comme le natif)
     // + champs déclarés dans l'arch (racine ET template -- les archs
     // kanban Odoo déclarent aux deux endroits), dédupliqués.

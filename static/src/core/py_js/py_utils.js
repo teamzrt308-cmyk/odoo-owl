@@ -86,6 +86,14 @@ export function evaluateSimpleCondition(expr, currentValues, parentValues = null
     if (defaultState !== undefined) values.state = defaultState;
   }
 
+  // context.get('key', défaut) / context.get('key') : les archs Odoo
+  // réelles en mettent partout dans invisible/readonly (ex.
+  // context.get('set_product_readonly', False)). Hors ligne il n'y a
+  // pas de contexte d'action -> la clé vaut son défaut (ou false).
+  expr = expr
+    .replace(/context\.get\(\s*(['"])([^'"]*)\1\s*,\s*([^()]+?)\s*\)/g, "($3)")
+    .replace(/context\.get\(\s*(['"])([^'"]*)\1\s*\)/g, "false");
+
   const jsExpr = translateOdooExprToJs(expr);
 
   // Fields referenced in the expression but missing from the current
@@ -97,8 +105,12 @@ export function evaluateSimpleCondition(expr, currentValues, parentValues = null
   });
 
   try {
-    const fn = new Function(...Object.keys(values), `return (${jsExpr});`);
-    return !!fn(...Object.values(values));
+    // Les champs du manifest peuvent s'appeler comme des mots réservés
+    // JS (res.partner.function, class...) : passer les valeurs en
+    // paramètres positionnels de new Function casserait la signature.
+    // Un scope `with` neutralise le problème (évaluation facon qWeb).
+    const fn = new Function("values", `with (values) { return (${jsExpr}); }`);
+    return !!fn(values);
   } catch (err) {
     console.warn("Expression invisible/readonly non supportée:", expr, err);
     return null;

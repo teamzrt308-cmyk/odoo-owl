@@ -26,13 +26,19 @@ import { parseKanbanArch } from "./kanban_arch_parser.js";
  * (record.x.value / record.x.raw_value), comme buildKanbanRecordProxy
  * de l'ancien moteur et comme les templates kanban natifs d'Odoo.
  */
-function buildKanbanRecordProxy(record, fieldsInfo) {
+function buildKanbanRecordProxy(record, fieldsInfo, declaredFields) {
   const proxy = {};
-  for (const [fname, info] of Object.entries(fieldsInfo)) {
+  const known = new Set(Object.keys(fieldsInfo || {}));
+  // Les archs réelles déclarent des champs absents de fields_info (ex.
+  // binaires image_128/avatar_128 exclus du manifest) : ils existent
+  // quand même dans le scope des templates, sinon record.x.value
+  // explose au rendu.
+  for (const fname of declaredFields || []) known.add(fname);
+  for (const fname of known) {
     const rawValue = record[fname];
     proxy[fname] = {
       raw_value: rawValue === undefined ? false : rawValue,
-      value: formatCellValue(rawValue, info),
+      value: formatCellValue(rawValue, fieldsInfo ? fieldsInfo[fname] : null),
     };
   }
   if (proxy.id === undefined) {
@@ -70,6 +76,20 @@ export class KanbanRenderer extends owl.Component {
       draggingRecordId: null,
       dragOverColumn: null,
     });
+  }
+
+  // ── Helpers d'arch Odoo 17 évalués dans les expressions de cartes ──
+  // Les archs réelles appellent kanban_image(...) dans t-value /
+  // t-attf-src et kanban_color(...) dans t-attf-class ; hors ligne les
+  // binaires ne sont pas servis -> placeholder local et palette fixe
+  // (classes o_kanban_color_0..10 du CSS Odoo).
+  kanban_image() {
+    return "assets/default-app.png";
+  }
+
+  kanban_color(color) {
+    const n = ((parseInt(color, 10) || 0) % 11 + 11) % 11;
+    return `o_kanban_color_${n}`;
   }
 
   // ── Quick create (le create vit dans le contrôleur : onQuickCreate) ──
@@ -197,7 +217,7 @@ export async function mountKanbanView(target, archXml, fieldsInfo, records, onCa
   }
 
   const recordProxies = (records || []).map((rawRecord) =>
-    buildKanbanRecordProxy(rawRecord, fieldsInfo)
+    buildKanbanRecordProxy(rawRecord, fieldsInfo, parsed.fields)
   );
   const columns = groupBy ? buildKanbanColumns(records || [], groupBy, fieldsInfo) : [];
 
@@ -219,7 +239,7 @@ export async function mountKanbanView(target, archXml, fieldsInfo, records, onCa
       onRecordMove: extras.onRecordMove || null,
       onQuickCreate: extras.onQuickCreate || null,
     },
-    { [parsed.templateName]: parsed.templateXml }
+    { [parsed.templateName]: parsed.templateXml, ...(parsed.subTemplates || {}) }
   );
 
   return { destroy };
