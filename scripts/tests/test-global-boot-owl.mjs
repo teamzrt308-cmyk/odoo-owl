@@ -117,7 +117,7 @@ class FakeDexie {
     this.list_cache = new FakeTable([], (r, k) => r.model === k);
     this.cache_meta = new FakeTable([], (r, k) => r.key === k);
     this.module_manifests = new FakeTable([], (r, k) => r.technical_name === k);
-    this.record_cache = new FakeTable([], (r, k) => Array.isArray(k) && r.model === k[0] && String(r.id) === String(k[1]));
+    this.record_cache = new FakeTable([], (r, k) => Array.isArray(k) && r.model === k[0] && String(r.record_id) === String(k[1]));
     this.security_info = new FakeTable();
     this.reference_records = new FakeTable([
       { model: "res.partner", id: 1, display_name: "Alice Corp" },
@@ -170,7 +170,7 @@ const listRecords = [
 ];
 await db.list_cache.put({ model: "sale.order::sale_action", records: listRecords, total: listRecords.length });
 await db.record_cache.put({
-  model: "sale.order", id: 42,
+  model: "sale.order", record_id: 42,
   data: {
     id: 42, name: "SO017", state: "draft", partner_id: [1, "Alice Corp"], amount_total: 100,
     order_line: [],

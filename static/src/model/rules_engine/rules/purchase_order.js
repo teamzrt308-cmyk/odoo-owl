@@ -44,13 +44,17 @@ export const purchaseOrderLineRules = [
     model: "purchase.order.line",
     method: "_compute_amount",
     computes: ["price_subtotal", "price_total"],
-    trigger: { fields: ["product_qty", "price_unit"] },
+    // @api.depends('product_qty', 'price_unit', 'discount') -- la remise
+    // ligne existe dans Odoo 17 (champ présent dans les manifests réels).
+    trigger: { fields: ["product_qty", "price_unit", "discount"] },
     compute(line) {
       const qty = Number(line.product_qty) || 0;
       const priceUnit = Number(line.price_unit) || 0;
-      const subtotal = qty * priceUnit;
-      // Pas de gestion des taxes côté offline pour l'instant (limitation
-      // déjà présente dans le code d'origine) -- price_total = price_subtotal.
+      const discount = Math.min(Math.max(Number(line.discount) || 0, 0), 100);
+      const subtotal = qty * priceUnit * (1 - discount / 100);
+      // Pas de module account.tax hors ligne (les taux ne sont pas
+      // embarqués dans le manifest) : price_total = price_subtotal,
+      // écart documenté dans docs/alignement-odoo.md.
       return {
         price_subtotal: Number(subtotal.toFixed(2)),
         price_total: Number(subtotal.toFixed(2)),
@@ -79,13 +83,22 @@ export const purchaseOrderLineRules = [
 export const purchaseOrderRules = [
   {
     model: "purchase.order",
-    method: "_compute_amount_total",
-    computes: ["amount_total"],
-    trigger: { fields: ["order_line.price_total"] },
+    method: "_compute_amounts",
+    computes: ["amount_untaxed", "amount_tax", "amount_total"],
+    // @api.depends('order_line.price_subtotal', ...) -- même cascade que
+    // la méthode Python : le HT vient des SOUS-TOTAUX de lignes (pas des
+    // TTC), la TVA vaut 0 hors ligne (pas de account.tax embarqué, écart
+    // documenté) et le total = HT + TVA, comme chez Odoo.
+    trigger: { fields: ["order_line.price_subtotal"] },
     compute(order) {
       const lines = order.order_line || [];
-      const total = lines.reduce((sum, l) => sum + (Number(l.price_total) || 0), 0);
-      return { amount_total: Number(total.toFixed(2)) };
+      const untaxed = lines.reduce((sum, l) => sum + (Number(l.price_subtotal) || 0), 0);
+      const tax = 0;
+      return {
+        amount_untaxed: Number(untaxed.toFixed(2)),
+        amount_tax: Number(tax.toFixed(2)),
+        amount_total: Number((untaxed + tax).toFixed(2)),
+      };
     },
   },
 ];

@@ -26,7 +26,7 @@ import { getRecordSmart } from "../../core/record_cache.js";
 import { getSecurityInfo } from "../../core/user_service.js";
 import { mountFormRenderer } from "./form_renderer.js";
 import { attachLiveBusinessRules } from "./dynamic_field_attrs.js";
-import { runDocumentRules, validateDocument, checkRequiredFields, computeStockEffects, computeOptimisticStateUpdate } from "../../model/rules_engine/rules_engine.js";
+import { runDocumentRules, validateDocument, checkRequiredFields, computeStockEffects, computeOptimisticStateUpdate, canRunObjectAction } from "../../model/rules_engine/rules_engine.js";
 import { collectFormData, buildDocumentGraph, applyDocumentGraphToDom } from "./form_serializer.js";
 import { addLedgerDelta, getAggregatedDeltasByField } from "../../core/local_ledger.js";
 import { patchCachedRecord } from "../../core/record_cache.js";
@@ -377,6 +377,21 @@ export class FormController extends owl.Component {
     if (!currentRecordId) {
       notifications.add("Impossible d'exécuter cette action avant l'enregistrement de la fiche.", { title: "Action object", type: "warning" });
       return;
+    }
+
+    // Verrou WORKFLOW (bucket "object_action") : le moteur reproduit la
+    // revalidation d'état que fait chaque méthode Python d'Odoo avant
+    // d'agir -- un clic sur une action non applicable dans l'état courant
+    // est refusé localement (toast), sans rien mettre en file.
+    try {
+      const verdictGraph = buildDocumentGraph(currentContainer, currentFieldsInfo, currentReferenceValues);
+      const verdict = canRunObjectAction(model, methodName, verdictGraph);
+      if (!verdict.ok) {
+        notifications.add(verdict.message, { title: "Action non applicable", type: "warning" });
+        return;
+      }
+    } catch (err) {
+      console.warn("[form_controller] Verrou workflow ignoré (graph indisponible) :", err);
     }
 
     try {

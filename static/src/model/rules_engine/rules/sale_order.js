@@ -28,11 +28,15 @@ export const saleOrderLineRules = [
     model: "sale.order.line",
     method: "_compute_amount",
     computes: ["price_subtotal", "price_total"],
-    trigger: { fields: ["product_uom_qty", "price_unit"] },
+    // @api.depends('product_uom_qty', 'price_unit', 'discount')
+    trigger: { fields: ["product_uom_qty", "price_unit", "discount"] },
     compute(line) {
       const qty = Number(line.product_uom_qty) || 0;
       const priceUnit = Number(line.price_unit) || 0;
-      const subtotal = qty * priceUnit;
+      const discount = Math.min(Math.max(Number(line.discount) || 0, 0), 100);
+      const subtotal = qty * priceUnit * (1 - discount / 100);
+      // Pas de module account.tax hors ligne (taux non embarqués dans le
+      // manifest) : price_total = price_subtotal, écart documenté.
       return {
         price_subtotal: Number(subtotal.toFixed(2)),
         price_total: Number(subtotal.toFixed(2)),
@@ -60,13 +64,21 @@ export const saleOrderLineRules = [
 export const saleOrderRules = [
   {
     model: "sale.order",
-    method: "_compute_amount_total",
-    computes: ["amount_total"],
-    trigger: { fields: ["order_line.price_total"] },
+    method: "_compute_amounts",
+    computes: ["amount_untaxed", "amount_tax", "amount_total"],
+    // @api.depends('order_line.price_subtotal', ...) -- même cascade que
+    // la méthode Python : HT = Σ sous-totaux de lignes, TVA = 0 hors
+    // ligne (écart documenté), total = HT + TVA.
+    trigger: { fields: ["order_line.price_subtotal"] },
     compute(order) {
       const lines = order.order_line || [];
-      const total = lines.reduce((sum, l) => sum + (Number(l.price_total) || 0), 0);
-      return { amount_total: Number(total.toFixed(2)) };
+      const untaxed = lines.reduce((sum, l) => sum + (Number(l.price_subtotal) || 0), 0);
+      const tax = 0;
+      return {
+        amount_untaxed: Number(untaxed.toFixed(2)),
+        amount_tax: Number(tax.toFixed(2)),
+        amount_total: Number((untaxed + tax).toFixed(2)),
+      };
     },
   },
   {

@@ -65,6 +65,12 @@ done
   présent) → form fiche 42 → save (file hors ligne, 0 erreur console
   inattendue). Vérifie le câblage croisé de TOUTES les itérations.
 
+- `test-workflow-rules-owl.mjs` : workflow hors ligne (itération 20) —
+  verrous `fromStates` (canRunObjectAction), états optimistes
+  (computeOptimisticStateUpdate, fusion stock_effect + object_action),
+  cascade remise → sous-totaux → amount_untaxed/tax/total, e2e form :
+  clic « Confirmer » → boutons header permutés (invisible), statusbar à
+  jour, method call en file, état persisté.
 - `audit-manifest.mjs` : **audit d'un manifest RÉEL** (export Dexie de
   la table `module_manifests`) — parse puis (avec `--mount`) montage
   runtime de chaque arch list/kanban/form avec enregistrements factices ;

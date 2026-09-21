@@ -13,6 +13,7 @@ import { domainRules } from "./domain_rules.js";
 import { defaultRules } from "./default_rules.js";
 import { genericLineAmountRules } from "./generic_rules.js";
 import { stockPickingRules } from "./stock_rules.js";
+import { workflowRules } from "./workflow_rules.js";
 
 export const allRules = [
   ...purchaseOrderLineRules,
@@ -24,4 +25,5 @@ export const allRules = [
   ...defaultRules,
   ...genericLineAmountRules,
   ...stockPickingRules,
+  ...workflowRules,
 ];

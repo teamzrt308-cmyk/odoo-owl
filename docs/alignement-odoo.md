@@ -8,7 +8,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ## ✅ Terminé
 
 ### Socle technique
-- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v42).
+- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v43).
 - **Persistance hors ligne** : IndexedDB/Dexie — caches record/list/reference/catalog/manifest, file de sync (`rpc_service`), ledger local.
 - **Règles métier** : `model/rules_engine/` (onchange/compute génériques + spécifiques purchase/sale/stock, access, domain, default) portées de la logique serveur ; `core/py_js/` (evaluateSimpleCondition, isNodeVisible).
 - **Tests** : 14 suites jsdom versionnées (`scripts/tests/`, ~395 assertions), exécutables offline.
@@ -199,6 +199,42 @@ l'ORM d'Odoo -- cette itération comble les trois trous restants :
 ### Contrôleurs (itérations 5-6, 11)
 - `FormController`, `ListController`, `KanbanController` (**dédié** depuis l'itération 11, descripteur `{ Controller }`) : **composants OWL**, zones en template, logique offline intacte (sync, règles document, ledger, actions objet, sauvegarde, pagination, recherche, dashboard), `onMounted`/`onWillDestroy`.
 - `view.js` monte `descriptor.Controller` (props params + env), comme le webclient natif.
+
+### Workflow hors ligne : boutons objet + calculs enrichis (itération 20)
+- **Nouveau bucket `object_action`** dans le moteur (`rules/workflow_rules.js`)
+  : portage des méthodes de boutons du header qui ne font que
+  transitionner l'état, avec la sémantique des méthodes Python Odoo 17 —
+  `fromStates` (revalidation du verrou d'état via `canRunObjectAction`,
+  comme la méthode Python), `optimisticState` (état appliqué IMMÉDIATEMENT
+  à l'écran hors ligne, fusionné avec `stock_effect` par
+  `computeOptimisticStateUpdate`), `guard` optionnel ;
+  - sale.order : action_confirm (draft|sent→sale), action_draft
+    (sale|cancel→draft), action_cancel, action_unlock (locked=false),
+    action_quotation_send (mail serveur, sans verrou) ;
+  - purchase.order : button_confirm (draft|sent|to approve→purchase,
+    double validation non embarquée = écart documenté), button_approve,
+    button_draft, button_cancel, button_done (verrouillage),
+    action_rfq_send ;
+  - stock.picking : action_confirm (→confirmed), action_assign
+    (confirmed|waiting→assigned), action_cancel — button_validate reste
+    dans stock_rules.js (effets ledger + lignes picked) ;
+  - méthodes NON portées (effets serveur : paiements, facturation,
+    mails, impressions, wizards) → comportement historique
+    (queueMethodCall, covered:false) ;
+- `form_controller.onObjectButtonClick` : verrou workflow AVANT la mise
+  en file — clic non applicable dans l'état courant → toast warning,
+  RIEN en file ;
+- **Calculs métier enrichis** (miroir `_compute_amount`/`_compute_amounts`) :
+  - lignes : `discount` (borne 0..100) entre dans le sous-total
+    (qty×prix×(1−remise/100)) ;
+  - commandes : `amount_untaxed` = Σ sous-totaux, `amount_tax` = 0 hors
+    ligne (pas de account.tax embarqué — écart documenté),
+    `amount_total` = HT + TVA ; déclencheur `order_line.price_subtotal`
+    (cascade complète) ;
+- **Fix moteur** : la boucle des lignes de `runDocumentRules` lit
+  désormais `getRulesForModel()` — le repli générique `*`
+  (__qty×__price→__subtotal) s'applique aussi aux one2many d'un modèle
+  sans règles propres (avant : ignoré).
 
 ### Audit du manifest RÉEL (itération 19)
 Constat sur l'export réel de la table `module_manifests`

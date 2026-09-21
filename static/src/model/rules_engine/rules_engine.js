@@ -28,11 +28,12 @@ function classifyRule(rule) {
   if (rule.type === "domain") return "domain"; // classification métier + record rules -- voir rules/domain_rules.js
   if (rule.type === "default") return "default"; // valeurs par défaut implicites -- voir rules/default_rules.js
   if (rule.type === "stock_effect") return "stock_effect"; // effets de stock (ledger) -- voir rules/stock_rules.js
+  if (rule.type === "object_action") return "object_action"; // workflow des boutons objet -- voir rules/workflow_rules.js
   if ("computes" in rule) return "compute"; // @api.depends -- voir generate_rules_js.py
   return "onchange"; // @api.onchange -- pas de clé "computes" dans ce cas
 }
 
-const RULE_BUCKETS = ["compute", "onchange", "constraint", "ondelete", "access", "domain", "default", "stock_effect"];
+const RULE_BUCKETS = ["compute", "onchange", "constraint", "ondelete", "access", "domain", "default", "stock_effect", "object_action"];
 
 /**
  * Modèle spécial : règles applicables à tous les modèles (droits CRUD
@@ -166,13 +167,16 @@ export async function runDocumentRules(rootModel, documentGraph) {
     iteration++;
     const nextQueue = [];
 
-    // 1) Règles sur les LIGNES (chaque ligne de chaque one2many)
+    // 1) Règles sur les LIGNES (chaque ligne de chaque one2many) --
+    // getRulesForModel() fusionne le modèle générique "*" : un one2many
+    // d'un modèle sans règles propres garde le repli __qty×__price.
     for (const [o2mField, { model: lineModel, rows }] of Object.entries(graph.lines)) {
-      const rulesForModel = rulesByModel.get(lineModel);
-      if (!rulesForModel) continue;
+      const lineComputeRules = getRulesForModel(lineModel, "compute");
+      const lineOnchangeRules = getRulesForModel(lineModel, "onchange");
+      if (lineComputeRules.length === 0 && lineOnchangeRules.length === 0) continue;
 
       rows.forEach((line, idx) => {
-        for (const rule of [...rulesForModel.compute, ...rulesForModel.onchange]) {
+        for (const rule of [...lineComputeRules, ...lineOnchangeRules]) {
           const triggered = changedFieldsQueue.some(
             (c) => c.scope === "root" && c.field === null // premier passage : tout évaluer
               || (c.scope === `${o2mField}[${idx}]` && directTriggerMatches(rule, c.field))
@@ -332,8 +336,16 @@ export async function computeStockEffects(model, methodName, documentGraph) {
  *   toutes les lignes -- pas de logique par ligne pour l'instant).
  */
 export function computeOptimisticStateUpdate(model, methodName, documentGraph) {
-  const rules = getRulesForModel(model, "stock_effect").filter(
-    (r) => r.method === methodName && typeof r.optimisticState === "function"
+  // Deux buckets portent des effets sur l'enregistrement cliqué :
+  //  - "stock_effect"  : stock.picking::button_validate (état + lignes) ;
+  //  - "object_action" : workflow porté des méthodes Odoo 17
+  //    (action_confirm, button_confirm, button_validate...) -- voir
+  //    rules/workflow_rules.js. Même propriété `optimisticState`, les
+  //    deux sont fusionnés.
+  const rules = ["stock_effect", "object_action"].flatMap((bucket) =>
+    getRulesForModel(model, bucket).filter(
+      (r) => r.method === methodName && typeof r.optimisticState === "function"
+    )
   );
 
   const result = { root: {}, lineUpdates: {} };
@@ -349,6 +361,60 @@ export function computeOptimisticStateUpdate(model, methodName, documentGraph) {
     if (partial && partial.lineUpdates) Object.assign(result.lineUpdates, partial.lineUpdates);
   }
   return result;
+}
+
+/**
+ * Verrou de pré-exécution d'une méthode objet (bouton du header), le
+ * pendant de validateDocument() pour le WORKFLOW : une règle
+ * "object_action" peut restreindre les états depuis lesquels la méthode
+ * est autorisée (l'attribut invisible des archs Odoo 17 masque le
+ * bouton, mais un double clic, une fiche périmée ou un hash direct
+ * peuvent encore l'appeler -- même défense en profondeur que chez
+ * Odoo, qui revalide l'état dans la méthode Python).
+ *
+ * - Aucune règle couvrant le couple (modèle, méthode) -> { ok: true,
+ *   covered: false } : comportement historique (queueMethodCall, les
+ *   effets serveur prendront le relais à la synchronisation).
+ * - Règle avec fromStates -> l'état courant du document doit y figurer,
+ *   sinon { ok: false, message } (le contrôleur affiche un toast).
+ * - Règle avec guard(documentGraph) -> verdict arbitraire de la règle.
+ *
+ * Synchrone et sans effet de bord (fonction pure, comme le moteur).
+ *
+ * @returns {{ ok: boolean, covered: boolean, message?: string }}
+ */
+export function canRunObjectAction(model, methodName, documentGraph) {
+  const rules = getRulesForModel(model, "object_action").filter((r) => r.method === methodName);
+  if (rules.length === 0) return { ok: true, covered: false };
+
+  for (const rule of rules) {
+    const root = (documentGraph && documentGraph.root) || {};
+    if (Array.isArray(rule.fromStates) && root.state !== undefined && root.state !== null) {
+      const stateStr = String(root.state);
+      if (!rule.fromStates.map(String).includes(stateStr)) {
+        return {
+          ok: false,
+          covered: true,
+          message:
+            rule.blockedMessage ||
+            `Action « ${rule.method} » non applicable depuis l'état « ${stateStr} ».`,
+        };
+      }
+    }
+    if (typeof rule.guard === "function") {
+      let verdict;
+      try {
+        verdict = rule.guard(documentGraph);
+      } catch (err) {
+        console.error(`[rules_engine] Erreur guard ${model}.${rule.method}:`, err);
+        verdict = { ok: false, message: "La validation de l'action a échoué." };
+      }
+      if (verdict && verdict.ok === false) {
+        return { ok: false, covered: true, message: verdict.message || `Action « ${rule.method} » refusée.` };
+      }
+    }
+  }
+  return { ok: true, covered: true };
 }
 
 // ---------------------------------------------------------------------------
