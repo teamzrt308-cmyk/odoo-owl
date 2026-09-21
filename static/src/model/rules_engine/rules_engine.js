@@ -96,14 +96,16 @@ function safeEvaluate(rule, ...args) {
  * résout donc tout l'asynchrone AVANT de les appeler, une fois par cycle,
  * plutôt qu'à chaque règle individuelle (évite N allers-retours Dexie).
  */
-async function buildDbSnapshot(modelsNeeded) {
-  const cache = new Map(); // clé "model:id" -> record
+async function buildDbSnapshot() {
+  const cache = new Map();
 
-  for (const model of modelsNeeded) {
-    const rows = await db.reference_records.where({ model }).toArray();
-    for (const row of rows) {
-      cache.set(`${model}:${row.id}`, row);
-    }
+  // TOUT le cache de référence (produits, taxes, partenaires...) : les
+  // règles font db.get(<modèle de référence>, id) -- filtrer sur les
+  // seuls modèles du DOCUMENT ratait ces lookups (product.product n'est
+  // ni la racine ni une ligne one2many).
+  const rows = await db.reference_records.toArray();
+  for (const row of rows) {
+    cache.set(`${row.model}:${row.id}`, row);
   }
 
   return {
@@ -148,11 +150,7 @@ function lineTriggerMatches(rule, o2mFieldName, changedSubField) {
  * @returns {Object} le documentGraph mis à jour (nouvelle référence)
  */
 export async function runDocumentRules(rootModel, documentGraph) {
-  const modelsInvolved = new Set([rootModel]);
-  for (const { model } of Object.values(documentGraph.lines || {})) {
-    modelsInvolved.add(model);
-  }
-  currentSnapshot = await buildDbSnapshot(modelsInvolved);
+  currentSnapshot = await buildDbSnapshot();
 
   let graph = {
     root: { ...documentGraph.root },
@@ -183,6 +181,7 @@ export async function runDocumentRules(rootModel, documentGraph) {
 
           const updates = safeCall(rule, line, currentSnapshot);
           if (!updates) continue;
+          extractWarning(rule, updates);
 
           for (const [field, value] of Object.entries(updates)) {
             if (line[field] !== value) {
@@ -217,6 +216,7 @@ export async function runDocumentRules(rootModel, documentGraph) {
 
         const updates = safeCall(rule, rootRecordForCompute, currentSnapshot);
         if (!updates) continue;
+        extractWarning(rule, updates);
 
         for (const [field, value] of Object.entries(updates)) {
           if (graph.root[field] !== value) {
@@ -255,6 +255,28 @@ function safeCall(rule, record, dbSnapshot) {
   }
 }
 
+/**
+ * Avertissements d'onchange -- une méthode Python @api.onchange peut
+ * retourner un dict {'warning': {'title', 'message'}} que le client
+ * natif affiche comme notification NON bloquante ; les règles locales
+ * reproduisent ça : une règle compute() peut ajouter une clé `warning`
+ * à son résultat. La clé est extraite (et RETIRÉE des mises à jour pour
+ * ne pas polluer les valeurs du document), puis diffusée sur le bus
+ * "rules:warning" -- le webclient la transforme en toast du service de
+ * notifications (itération 16).
+ */
+function extractWarning(rule, result) {
+  if (!result || !result.warning) return;
+  const { title, message } = result.warning;
+  bus.trigger("rules:warning", {
+    model: rule.model,
+    method: rule.method,
+    title: title || "Attention",
+    message: message || "",
+  });
+  delete result.warning;
+}
+
 // ---------------------------------------------------------------------------
 // Effets de stock (règles "stock_effect") -- voir rules/stock_rules.js
 // ---------------------------------------------------------------------------
@@ -280,9 +302,7 @@ export async function computeStockEffects(model, methodName, documentGraph) {
   const rules = getRulesForModel(model, "stock_effect").filter((r) => r.method === methodName);
   if (rules.length === 0) return [];
 
-  const modelsInvolved = new Set([model]);
-  for (const { model: lineModel } of Object.values(documentGraph.lines || {})) modelsInvolved.add(lineModel);
-  const dbSnapshot = await buildDbSnapshot(modelsInvolved);
+  const dbSnapshot = await buildDbSnapshot();
 
   const deltas = [];
   for (const rule of rules) {
@@ -341,11 +361,7 @@ export function computeOptimisticStateUpdate(model, methodName, documentGraph) {
  * @returns {{ valid: boolean, errors: Array<{model, method, message}> }}
  */
 export async function validateDocument(rootModel, documentGraph) {
-  const modelsInvolved = new Set([rootModel]);
-  for (const { model } of Object.values(documentGraph.lines || {})) {
-    modelsInvolved.add(model);
-  }
-  currentSnapshot = await buildDbSnapshot(modelsInvolved);
+  currentSnapshot = await buildDbSnapshot();
 
   const errors = [];
 
@@ -372,6 +388,35 @@ export async function validateDocument(rootModel, documentGraph) {
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Champs requis -- équivalent local du checkRequired natif : le NOT NULL
+ * serveur ne peut pas être interrogé hors ligne, la validation des
+ * champs `required` des métadonnées (fieldsInfo) est donc refaite ici,
+ * AVANT les contraintes (même ordre qu'Odoo : required d'abord). Convention
+ * Odoo : 0 est une VALEUR, false/""/null sont vides ; un many2one est
+ * vide si [false, ""].
+ *
+ * @param {string} model - modèle racine (pour la symétrie d'API)
+ * @param {Object} record - valeurs du document (ex: formData collecté)
+ * @param {Object} fieldsInfo - métadonnées { champ: { required, label } }
+ * @returns {Array<string>} libellés des champs requis manquants
+ */
+export function checkRequiredFields(model, record, fieldsInfo) {
+  const missing = [];
+  for (const [fname, info] of Object.entries(fieldsInfo || {})) {
+    if (!info || !info.required) continue;
+    const value = record ? record[fname] : undefined;
+    const isEmpty =
+      value === false ||
+      value === undefined ||
+      value === null ||
+      value === "" ||
+      (Array.isArray(value) && (value.length === 0 || value[0] === false || value[0] === undefined));
+    if (isEmpty) missing.push(info.label || fname);
+  }
+  return missing;
 }
 
 /**
@@ -505,6 +550,7 @@ export function runLineRules(lineModel, line, { changedFields = null, dbSnapshot
 
     const result = safeCall(rule, working, dbSnapshot);
     if (!result) continue;
+    extractWarning(rule, result);
 
     Object.assign(working, result);
     Object.assign(updates, result);

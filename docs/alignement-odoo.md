@@ -8,10 +8,10 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ## ✅ Terminé
 
 ### Socle technique
-- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v39).
+- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v40).
 - **Persistance hors ligne** : IndexedDB/Dexie — caches record/list/reference/catalog/manifest, file de sync (`rpc_service`), ledger local.
 - **Règles métier** : `model/rules_engine/` (onchange/compute génériques + spécifiques purchase/sale/stock, access, domain, default) portées de la logique serveur ; `core/py_js/` (evaluateSimpleCondition, isNodeVisible).
-- **Tests** : 13 suites jsdom versionnées (`scripts/tests/`, ~370 assertions), exécutables offline.
+- **Tests** : 14 suites jsdom versionnées (`scripts/tests/`, ~395 assertions), exécutables offline.
 
 ### Structure & flux (itération 1)
 - Registre `registry.category("views")` + dispatcher `views/view.js` (`resolveViewType` : view demandée → form si id/isNew → list) — même flux qu'Odoo (ActionService → registry views).
@@ -98,6 +98,38 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
   handler passé en prop (`onLogout="() => this.onUserLogout()"`),
   mutation d'objet imbriqué de useState non réactive (remplacer
   l'objet entier).
+
+### Règles métier « comme Odoo » (itération 17)
+Le moteur local (`model/rules_engine/`) reproduit déjà les concepts de
+l'ORM d'Odoo -- cette itération comble les trois trous restants :
+
+| Odoo (serveur) | Moteur hors ligne |
+|---|---|
+| `@api.depends` | règles `computes` + `trigger` (cascade) |
+| `@api.onchange` | règles `trigger` + `compute` (runLineRules/runDocumentRules) |
+| dict `{'warning': ...}` d'un onchange | clé `warning` du résultat -> bus `rules:warning` -> toast (notification service) |
+| `@api.constrains` + `ValidationError` | règles `type: "constraint"` + `validate()` -> `validateDocument` bloque le save |
+| `checkRequired` / NOT NULL | `checkRequiredFields(model, record, fieldsInfo)` (0 est une valeur, false/"" vides) |
+| `@api.ondelete` | `checkOndeleteGuard` |
+| `ir.model.access` | règles `access` (CRUD + groupes) |
+| `ir.rule` | règles `domain` (record_rule) -> `filterByRecordRule` |
+| defaults | règles `default` -> `getDefaultValue` |
+| workflow boutons (stock) | règles `stock_effect` (deltas ledger + état optimiste) |
+
+- contraintes portées : `sale.order.line._check_quantity`
+  (product_uom_qty > 0), `purchase.order.line._check_quantity`
+  (product_qty > 0), `sale.order._check_dates` (commitment_date >=
+  date_order) -- messages français, champs absents tolérés (ligne en
+  cours de saisie) ;
+- avertissement porté : `purchase.order.line._onchange_product_id`
+  prévient quand le produit n'a pas de prix d'achat (comme le dict
+  warning Python) ;
+- `checkRequiredFields` branché AVANT `validateDocument` dans
+  saveRecord (même ordre qu'Odoo) : blocage + statut + toast danger ;
+- CORRIGÉ au passage : `buildDbSnapshot` ne chargeait que les modèles
+  du DOCUMENT (racine + lignes) -- les `db.get("product.product", ...)`
+  des règles renvoyaient toujours null ; le snapshot charge désormais
+  TOUT le cache de référence.
 
 ### Notifications + ActionService étendu (itération 16)
 - `core/notifications/notification_service.js` : service de
@@ -187,7 +219,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 
 ### Modèle de données
 7. **Pas de RelationalModel/BasicModel** (datapoints, dirty/changes) : notre état = DOM (sérialiseur) + état réactif des widgets — écart assumé du moteur hors ligne, à garder documenté.
-8. Validation required/constraints au save : partielle (via `validateDocument`), pas d'équivalent complet de checkRequired.
+8. Validation required/constraints au save : FAITE (itération 17 -- checkRequiredFields + contraintes portées) ; reste les contraintes SQL et les contraintes Python non portées (au cas par cas, selon les modèles utilisés).
 
 ### Couche recherche
 9. SearchBar : filtres/favoris/group by FAITS (itération 12) ; reste l'auto-complétion des `<field>` du `<search>` et les domaines dynamiques (Odoo withSearch complet) ; engrenage options purement décoratif.
@@ -212,5 +244,5 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 
 ## Écarts assumés (spécificité hors ligne, à ne PAS « corriger »)
 - Champs montés par `field_bridge` (contrat DOM sérialiseur) plutôt que tags `<Field>` OWL ;
-- règles métier locales (`rules_engine`) au lieu des onchange serveur ;
+- règles métier locales (`rules_engine`) au lieu des onchange serveur -- mapping Odoo→moteur documenté (itération 17) ;
 - templates compilés depuis l'arch au lieu de templates qweb servis par le serveur.

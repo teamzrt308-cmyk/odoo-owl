@@ -15,6 +15,8 @@
 
 import "./conflict_detail/conflict_detail.js";
 import { router } from "../core/browser/router_service.js";
+import { bus } from "../core/bus/bus_service.js";
+import { notifications } from "../core/notifications/notification_service.js";
 import { createActionService } from "./actions/action_service.js";
 import { mountNavbar } from "./navbar/navbar_component.js";
 import { mountNotificationContainer } from "../core/notifications/notification_container.js";
@@ -66,6 +68,14 @@ export async function mountWebclient() {
   // (toasts du service de notifications + RainbowMan des effets).
   await mountNotificationContainer(navbarRoot);
   await mountRainbowMan(navbarRoot);
+
+  // Avertissements d'onchange (dict {'warning': ...} des méthodes
+  // Python, reproduit par les règles locales) -> toast non bloquant,
+  // comme la notification du webclient natif.
+  bus.addEventListener("rules:warning", (ev) => {
+    const { title, message } = ev.detail || {};
+    notifications.add(message, { title: title || "Attention", type: "warning" });
+  });
 
   actionService.restoreState(router.current);
 

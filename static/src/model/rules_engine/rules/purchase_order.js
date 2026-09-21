@@ -24,10 +24,20 @@ export const purchaseOrderLineRules = [
     compute(line, db) {
       const product = db.get("product.product", line.product_id);
       if (!product) return null;
-      return {
+      const updates = {
         name: product.display_name || product.name,
         price_unit: Number(product.price) || 0,
       };
+      // Comme le dict {'warning': {...}} que la méthode Python peut
+      // retourner : avertir quand le produit n'a pas de prix d'achat
+      // (le webclient l'affiche en toast non bloquant, itération 17).
+      if (!Number(product.price)) {
+        updates.warning = {
+          title: "Prix fournisseur manquant",
+          message: `Le produit « ${product.display_name || product.name || line.product_id} » n'a pas de prix d'achat défini.`,
+        };
+      }
+      return updates;
     },
   },
   {
@@ -45,6 +55,23 @@ export const purchaseOrderLineRules = [
         price_subtotal: Number(subtotal.toFixed(2)),
         price_total: Number(subtotal.toFixed(2)),
       };
+    },
+  },
+  {
+    model: "purchase.order.line",
+    type: "constraint",
+    method: "_check_quantity",
+    // @api.constrains('product_qty') -- miroir de la contrainte Python :
+    // une quantité fournie doit être strictement positive (absente =
+    // ligne en cours de saisie, rien à vérifier).
+    constrains: ["product_qty"],
+    validate(line) {
+      const qty = line.product_qty;
+      if (qty === undefined || qty === null || qty === false || qty === "") return { valid: true };
+      if (Number(qty) <= 0) {
+        return { valid: false, message: "La quantité achetée doit être strictement positive." };
+      }
+      return { valid: true };
     },
   },
 ];

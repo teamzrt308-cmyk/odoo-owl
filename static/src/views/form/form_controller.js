@@ -26,7 +26,7 @@ import { getRecordSmart } from "../../core/record_cache.js";
 import { getSecurityInfo } from "../../core/user_service.js";
 import { mountFormRenderer } from "./form_renderer.js";
 import { attachLiveBusinessRules } from "./dynamic_field_attrs.js";
-import { runDocumentRules, validateDocument, computeStockEffects, computeOptimisticStateUpdate } from "../../model/rules_engine/rules_engine.js";
+import { runDocumentRules, validateDocument, checkRequiredFields, computeStockEffects, computeOptimisticStateUpdate } from "../../model/rules_engine/rules_engine.js";
 import { collectFormData, buildDocumentGraph, applyDocumentGraphToDom } from "./form_serializer.js";
 import { addLedgerDelta, getAggregatedDeltasByField } from "../../core/local_ledger.js";
 import { patchCachedRecord } from "../../core/record_cache.js";
@@ -449,9 +449,19 @@ export class FormController extends owl.Component {
     if (!currentContainer || !currentFieldsInfo) return;
     const formData = collectFormData(currentContainer, currentFieldsInfo);
 
-    // Règle constraint -- aucune n'existe encore dans rules/ pour ce
-    // projet, mais le point de branchement est désormais actif : la
-    // sauvegarde sera bloquée dès qu'une contrainte sera ajoutée.
+    // Champs requis (équivalent du checkRequired natif, côté client) :
+    // bloqué AVANT les contraintes, même ordre que la validation Odoo.
+    const missingRequired = checkRequiredFields(model, formData, currentFieldsInfo);
+    if (missingRequired.length > 0) {
+      const message = "Champs requis manquants : " + missingRequired.join(", ");
+      statusEl.textContent = "Enregistrement bloqué : " + message;
+      notifications.add(message, { title: "Champs requis", type: "danger" });
+      return;
+    }
+
+    // Règle constraint -- les @api.constrains portées dans rules/
+    // (quantités strictement positives, dates cohérentes...) bloquent
+    // la sauvegarde avec leur message, comme un raise ValidationError.
     const graphForValidation = buildDocumentGraph(currentContainer, currentFieldsInfo, currentReferenceValues);
     const validation = await validateDocument(model, graphForValidation);
     if (!validation.valid) {

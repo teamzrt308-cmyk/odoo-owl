@@ -39,6 +39,22 @@ export const saleOrderLineRules = [
       };
     },
   },
+  {
+    model: "sale.order.line",
+    type: "constraint",
+    method: "_check_quantity",
+    // @api.constrains('product_uom_qty') -- miroir de la contrainte
+    // Python : une quantité fournie doit être strictement positive.
+    constrains: ["product_uom_qty"],
+    validate(line) {
+      const qty = line.product_uom_qty;
+      if (qty === undefined || qty === null || qty === false || qty === "") return { valid: true };
+      if (Number(qty) <= 0) {
+        return { valid: false, message: "La quantité vendue doit être strictement positive." };
+      }
+      return { valid: true };
+    },
+  },
 ];
 
 export const saleOrderRules = [
@@ -51,6 +67,23 @@ export const saleOrderRules = [
       const lines = order.order_line || [];
       const total = lines.reduce((sum, l) => sum + (Number(l.price_total) || 0), 0);
       return { amount_total: Number(total.toFixed(2)) };
+    },
+  },
+  {
+    model: "sale.order",
+    type: "constraint",
+    method: "_check_dates",
+    // @api.constrains('commitment_date', 'date_order') -- la date de
+    // livraison souhaitée ne peut pas précéder la date de commande.
+    constrains: ["commitment_date", "date_order"],
+    validate(order) {
+      const commitment = order.commitment_date;
+      const ordered = order.date_order;
+      if (!commitment || !ordered) return { valid: true };
+      if (String(commitment) < String(ordered)) {
+        return { valid: false, message: "La date de livraison souhaitée précède la date de commande." };
+      }
+      return { valid: true };
     },
   },
 ];

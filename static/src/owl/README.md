@@ -163,6 +163,12 @@ form_arch_parser natif) avant d'attaquer les contrôleurs.
   `mountKanbanView(..., groupBy)` construit les colonnes (en-tête
   libellé + badge compteur, « Aucun » pour les valeurs vides), template
   compilé à trois branches (groupé / vide / à plat).
+- ✅ Règles métier « comme Odoo » (itération 17) : contraintes
+  `@api.constrains` portées (quantités, dates -> validateDocument
+  bloque le save), avertissements d'onchange (clé warning -> bus
+  rules:warning -> toast), `checkRequiredFields` branché dans
+  saveRecord ; buildDbSnapshot charge tout le cache de référence (bug
+  latent : les db.get produits renvoyaient null).
 - ✅ Notifications + effets (itération 16) : `notification_service.js`
   (registre "services", bus notification:changed) +
   `NotificationContainer` OWL (toasts typés, boutons, sticky),

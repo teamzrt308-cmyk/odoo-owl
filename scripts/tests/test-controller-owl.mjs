@@ -52,10 +52,11 @@ class FakeTable {
     if (this.keyFn) return this.rows.find((r) => this.keyFn(r, key)) || undefined;
     return undefined;
   }
+  async toArray() { return [...this.rows]; }
   where(clause) {
     const rows = this.rows;
     return {
-      equals: () => ({ toArray: async () => rows }),
+      equals: () => ({ toArray: async () => rows, first: async () => rows[0], count: async () => rows.length }),
       // Dexie où clause objet : where({ model }) -> rows filtrées
       toArray: async () => rows.filter((r) => Object.entries(clause || {}).every(([k, v]) => r[k] === v)),
     };
