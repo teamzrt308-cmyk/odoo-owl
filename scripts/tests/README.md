@@ -70,7 +70,10 @@ done
   (computeOptimisticStateUpdate, fusion stock_effect + object_action),
   cascade remise → sous-totaux → amount_untaxed/tax/total, e2e form :
   clic « Confirmer » → boutons header permutés (invisible), statusbar à
-  jour, method call en file, état persisté.
+  jour, method call en file, état persisté. **Chaîne complète
+  vente -> stock** : confirmer le devis (0 effet stock, comme Odoo),
+  valider le bon (double entrée −2/+2, qty_delivered, picking done),
+  liste des quants affichant 98 en lecture ledger, re-validation refusée.
 - `audit-manifest.mjs` : **audit d'un manifest RÉEL** (export Dexie de
   la table `module_manifests`) — parse puis (avec `--mount`) montage
   runtime de chaque arch list/kanban/form avec enregistrements factices ;

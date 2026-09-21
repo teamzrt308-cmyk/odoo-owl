@@ -138,10 +138,22 @@ const purchaseOrderWorkflow = [
 ];
 
 // ── stock.picking (Odoo 17 : stock/models/stock_picking.py) ──────────────
-// button_validate n'est PAS ici : voir stock_rules.js (stock_effect +
-// optimisticState state "done" + lignes picked). Ici : le reste du
-// workflow du bon.
+// button_validate porte son VERROU ici (object_action) et ses EFFETS dans
+// stock_rules.js (stock_effect : deltas ledger + lignes picked) --
+// canRunObjectAction() et computeOptimisticStateUpdate() fusionnent les
+// deux buckets, comme si la méthode Python unique faisait les deux.
 const stockPickingWorkflow = [
+  {
+    model: "stock.picking",
+    type: "object_action",
+    method: "button_validate",
+    // La méthode Python refuse un bon déjà fait/annulé (UserError) ;
+    // les archs masquent le bouton via invisible="state in ('done','cancel')"
+    // -- on revalide ici (double clic, fiche périmée).
+    fromStates: ["draft", "waiting", "confirmed", "assigned"],
+    blockedMessage: "Ce transfert est déjà terminé (ou annulé) : validation impossible.",
+    optimisticState: noopOptimistic,
+  },
   {
     model: "stock.picking",
     type: "object_action",

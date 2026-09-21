@@ -74,6 +74,7 @@ class FakeDexie {
     this.record_cache = new FakeTable([], (r, k) => Array.isArray(k) && r.model === k[0] && String(r.record_id) === String(k[1]));
     this.installed_apps = new FakeTable();
     this.local_ledger = new FakeTable();
+    this.list_cache = new FakeTable([], (r, k) => r.model === k);
   }
   version() { return { stores() {} }; }
   transaction() {}
@@ -81,8 +82,10 @@ class FakeDexie {
 globalThis.Dexie = FakeDexie;
 
 // ── Moteur de règles (workflow inclus via allRules) ──
-const { initRulesEngine, canRunObjectAction, computeOptimisticStateUpdate, runDocumentRules } =
+const { initRulesEngine, canRunObjectAction, computeOptimisticStateUpdate, runDocumentRules, computeStockEffects } =
   await import(REPO + "/static/src/model/rules_engine/rules_engine.js");
+const { addLedgerDelta, applyLedgerAdjustments, ledgerKeyForRecord } = await import(REPO + "/static/src/core/local_ledger.js");
+const { getListRecordsSmart } = await import(REPO + "/static/src/core/list_cache.js");
 const { allRules } = await import(REPO + "/static/src/model/rules_engine/rules/index.js");
 initRulesEngine(allRules);
 
@@ -268,5 +271,75 @@ function destroyView(c) {
   // simplement le conteneur (la suite e2e vérifie le destroy ailleurs).
   c.innerHTML = "";
 }
+
+// ── E. CHAÎNE COMPLÈTE vente -> stock (comme Odoo 17) ────────────────────
+// Scénario : confirmer un devis VENTES, puis VALIDER dans Inventaire le
+// bon de livraison (préalablement synchronisé). Vérifie : la confirmation
+// ne touche PAS le stock (comme Odoo -- le picking est créé par le
+// serveur), la validation décrémente le quant (double entrée), incrémente
+// qty_delivered sur la ligne de vente, et la LISTE des quants affiche la
+// quantité ajustée immédiatement (lecture ledger).
+
+// E.0 -- données de départ (1 quant 100 pcs en Stock INT, 2 à livrer)
+const quantRecord = { id: 1, product_id: [5, "Desk"], location_id: [12, "Stock"], quantity: 100 };
+await db.list_cache.put({
+  model: "stock.quant::q_action",
+  records: [quantRecord],
+  total: 1,
+});
+const pickingGraph = {
+  root: { id: 7, name: "WH/OUT/00001", state: "assigned", location_id: [12, "Stock"], location_dest_id: [30, "Clients"] },
+  lines: {
+    move_ids_without_package: {
+      model: "stock.move",
+      rows: [
+        { id: 71, product_id: [5, "Desk"], quantity: 2, sale_line_id: [11, "SO017 ligne 1"],
+          location_id: [12, "Stock"], location_dest_id: [30, "Clients"] },
+      ],
+    },
+  },
+};
+
+// E.1 -- confirmer le devis : état sale, et AUCUN effet de stock (le
+// picking est créé par le serveur, comme chez Odoo)
+ok(canRunObjectAction("sale.order", "action_confirm", { root: { state: "draft" } }).ok === true,
+   "chaîne : confirmer le devis est autorisé (draft)");
+const saleConfirmEffects = await computeStockEffects("sale.order", "action_confirm", pickingGraph);
+ok(saleConfirmEffects.length === 0, "chaîne : confirmer un devis ne touche PAS le stock (comme Odoo)");
+
+// E.2 -- valider le bon : verrou OK depuis « assigned »…
+ok(canRunObjectAction("stock.picking", "button_validate", pickingGraph).ok === true,
+   "chaîne : Valider autorisé depuis « assigned »");
+// …deltas de stock façon double entrée Odoo (+dest, -source) + qty_delivered
+const deltas = await computeStockEffects("stock.picking", "button_validate", pickingGraph);
+const deltaOf = (model, key, field) =>
+  deltas.filter((d) => d.model === model && d.key === key && d.deltaField === field)
+        .reduce((s, d) => s + d.delta, 0);
+ok(deltaOf("stock.quant", "5:12", "quantity") === -2, "chaîne : quant Stock (5:12) DÉCRÉMENTÉ de 2");
+ok(deltaOf("stock.quant", "5:30", "quantity") === +2, "chaîne : quant Clients (5:30) incrémenté de 2 (double entrée)");
+ok(deltaOf("sale.order.line", "11", "qty_delivered") === 2, "chaîne : qty_delivered +2 sur la ligne de vente");
+// écriture réelle dans le ledger (ce que fait form_controller.onObjectButtonClick)
+const uuid = "uuid-validate-1";
+for (const d of deltas) await addLedgerDelta(d.model, d.key, d.deltaField, d.delta, uuid);
+
+// E.3 -- le picking lui-même passe « done » immédiatement (optimiste)
+const pickOpt = computeOptimisticStateUpdate("stock.picking", "button_validate", pickingGraph);
+ok(pickOpt.root.state === "done" && pickOpt.lineUpdates.picked === true,
+   "chaîne : picking -> « done » + lignes « picked » immédiatement");
+
+// E.4 -- la LISTE des quants (Ajustements d'inventaire) affiche 98
+const quantList = await getListRecordsSmart("stock.quant", null, null, "q_action");
+ok(quantList.records[0].quantity === 98,
+   "chaîne : la LISTE affiche 100 - 2 = 98 (lecture ledger, sans persister)");
+ok(quantRecord.quantity === 100, "chaîne : le cache stocké reste à 100 (le serveur rattrapera à la sync)");
+
+// E.5 -- la fiche du quant (lecture ajustée) affiche aussi 98
+const adjusted = await applyLedgerAdjustments("stock.quant", ledgerKeyForRecord("stock.quant", quantRecord), quantRecord);
+ok(adjusted.quantity === 98, "chaîne : la FICHE du quant affiche 98 (clé composite produit:emplacement)");
+
+// E.6 -- re-valider un bon déjà fait -> refusé (comme la UserError Odoo)
+const revalidate = canRunObjectAction("stock.picking", "button_validate", { ...pickingGraph, root: { ...pickingGraph.root, state: "done" } });
+ok(revalidate.ok === false && /déjà terminé/.test(revalidate.message),
+   "chaîne : re-Valider un bon « done » -> refusé (double clic protégé)");
 
 console.log("\n✅ TOUS LES TESTS WORKFLOW (règles métier + boutons) PASSENT");

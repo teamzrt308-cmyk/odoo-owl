@@ -35,6 +35,25 @@ export async function addLedgerDelta(model, key, deltaField, delta, syncUuid) {
 }
 
 /**
+ * Clé du ledger pour un enregistrement AFFICHÉ. La convention doit
+ * rester identique à celle des règles stock_effect (stock_rules.js) :
+ * les stock.quant sont agrégés par le couple produit:emplacement (pas
+ * par leur id), tout autre modèle est indexé par son id.
+ */
+export function ledgerKeyForRecord(model, record) {
+  if (!record) return null;
+  if (model === "stock.quant") {
+    const unwrap = (v) => (Array.isArray(v) ? v[0] : v);
+    const productId = unwrap(record.product_id);
+    const locationId = unwrap(record.location_id);
+    if (productId !== undefined && productId !== null && locationId !== undefined && locationId !== null) {
+      return `${productId}:${locationId}`;
+    }
+  }
+  return String(record.id);
+}
+
+/**
  * Somme tous les deltas en attente pour un agrégat précis
  * (model + key + delta_field). Retourne 0 s'il n'y en a aucun.
  */
@@ -81,6 +100,32 @@ export async function applyLedgerAdjustments(model, key, baseRecord) {
     adjusted[field] = (adjusted[field] || 0) + delta;
   }
   return adjusted;
+}
+
+/**
+ * Applique les deltas en attente sur une LISTE d'enregistrements
+ * (listes/kanban) -- lecture AJUSTÉE sans persistance : comme une
+ * lecture Odoo en temps réel, la base stockée reste celle du serveur et
+ * le ledger porte le diff local en attente de synchronisation. Les
+ * enregistrements sans delta sont retournés tels quels (même référence).
+ *
+ * @returns {Array} nouvelles lignes à afficher
+ */
+export async function applyLedgerAdjustmentsToList(model, records) {
+  if (!Array.isArray(records) || records.length === 0) return records;
+  const adjusted = [];
+  let anyDelta = false;
+  for (const record of records) {
+    const key = ledgerKeyForRecord(model, record);
+    const deltas = key ? await getAggregatedDeltasByField(model, key) : {};
+    if (deltas && Object.keys(deltas).length > 0) {
+      anyDelta = true;
+      adjusted.push(await applyLedgerAdjustments(model, key, record));
+    } else {
+      adjusted.push(record);
+    }
+  }
+  return anyDelta ? adjusted : records;
 }
 
 /**

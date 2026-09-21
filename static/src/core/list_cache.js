@@ -91,19 +91,34 @@ export async function getListRecordsSmart(
 ) {
   const cacheKey = buildListCacheKey(modelName, actionId, extraDomain);
 
+  let data;
   if (!navigator.onLine) {
     const cached = await getCachedListRecords(cacheKey);
     if (!cached) throw new Error(`Aucune liste en cache pour "${modelName}".`);
-    return cached;
+    data = cached;
+  } else {
+    try {
+      data = await fetchAndStoreListRecords(modelName, apiKey, baseUrl, actionId, cacheKey, extraDomain);
+    } catch (err) {
+      console.warn(`Fetch liste échoué pour ${modelName}, cache utilisé:`, err);
+      const cached = await getCachedListRecords(cacheKey);
+      if (!cached) throw err;
+      data = cached;
+    }
   }
+
+  // Lecture AJUSTÉE : par-dessus les records du serveur (cachés), on
+  // applique les deltas locaux en attente du ledger (ex: quantités de
+  // stock modifiées hors ligne par une validation de bon) -- même
+  // rendu qu'une lecture Odoo temps réel, sans persister.
   try {
-    return await fetchAndStoreListRecords(modelName, apiKey, baseUrl, actionId, cacheKey, extraDomain);
+    const { applyLedgerAdjustmentsToList } = await import("./local_ledger.js");
+    const records = await applyLedgerAdjustmentsToList(modelName, data.records || []);
+    if (records !== data.records) return { ...data, records };
   } catch (err) {
-    console.warn(`Fetch liste échoué pour ${modelName}, cache utilisé:`, err);
-    const cached = await getCachedListRecords(cacheKey);
-    if (!cached) throw err;
-    return cached;
+    console.warn("[list_cache] Ajustement ledger ignoré :", err);
   }
+  return data;
 }
 
 /**

@@ -8,7 +8,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ## ✅ Terminé
 
 ### Socle technique
-- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v43).
+- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v44).
 - **Persistance hors ligne** : IndexedDB/Dexie — caches record/list/reference/catalog/manifest, file de sync (`rpc_service`), ledger local.
 - **Règles métier** : `model/rules_engine/` (onchange/compute génériques + spécifiques purchase/sale/stock, access, domain, default) portées de la logique serveur ; `core/py_js/` (evaluateSimpleCondition, isNodeVisible).
 - **Tests** : 14 suites jsdom versionnées (`scripts/tests/`, ~395 assertions), exécutables offline.
@@ -235,6 +235,28 @@ l'ORM d'Odoo -- cette itération comble les trois trous restants :
   désormais `getRulesForModel()` — le repli générique `*`
   (__qty×__price→__subtotal) s'applique aussi aux one2many d'un modèle
   sans règles propres (avant : ignoré).
+
+**Chaîne complète vente -> stock (comme Odoo 17, validée par test)** :
+1. CONFIRMER le devis (Ventes) : bouton autorisé depuis draft/sent ->
+   état « Commande client » immédiat, action en file, et AUCUN effet de
+   stock (le picking est créé par le serveur à la synchronisation, comme
+   chez Odoo — il faut donc qu'il ait été synchronisé au moins une fois
+   pour exister hors ligne) ;
+2. VALIDER le bon (Inventaire) : autorisé depuis draft/waiting/confirmed/
+   assigned (verrou object_action, refus « déjà terminé » sur done/cancel
+   comme la UserError Python) ; picking -> « Fait » + lignes « picked »
+   immédiatement ; deltas façon double entrée (−quant à l'emplacement
+   source, +quant à la destination) + qty_delivered/qty_received sur les
+   lignes d'origine, écrits dans le ledger local lié à l'action ;
+3. AFFICHAGE : la LISTE/KANBAN des quants applique le ledger en lecture
+   (`getListRecordsSmart` -> `applyLedgerAdjustmentsToList`, sans
+   persister — le serveur rattrape à la sync puis le ledger est purgé) ;
+   les lignes o2m des fiches vente/achat sont ajustées
+   (`applyLedgerAdjustmentsToForm`) ; clé composite `produit:emplacement`
+   pour stock.quant (`ledgerKeyForRecord`) ;
+4. écart documenté : la fiche quant racine n'applique PAS le ledger
+   (éviterait d'enregistrer la quantité ajustée à la sauvegarde) — la
+   liste reste l'écran de référence.
 
 ### Audit du manifest RÉEL (itération 19)
 Constat sur l'export réel de la table `module_manifests`
