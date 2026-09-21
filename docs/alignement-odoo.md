@@ -8,7 +8,7 @@ Référence : branche `arena/01a0b34a-odoo-owl`, itérations 1→12 poussées.
 ## ✅ Terminé
 
 ### Socle technique
-- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v40).
+- **OWL embarqué localement** (`static/lib/owl.iife.js` 2.8.2), bundle esbuild, PWA (manifest + service-worker v41).
 - **Persistance hors ligne** : IndexedDB/Dexie — caches record/list/reference/catalog/manifest, file de sync (`rpc_service`), ledger local.
 - **Règles métier** : `model/rules_engine/` (onchange/compute génériques + spécifiques purchase/sale/stock, access, domain, default) portées de la logique serveur ; `core/py_js/` (evaluateSimpleCondition, isNodeVisible).
 - **Tests** : 14 suites jsdom versionnées (`scripts/tests/`, ~395 assertions), exécutables offline.
@@ -199,6 +199,13 @@ l'ORM d'Odoo -- cette itération comble les trois trous restants :
 ### Contrôleurs (itérations 5-6, 11)
 - `FormController`, `ListController`, `KanbanController` (**dédié** depuis l'itération 11, descripteur `{ Controller }`) : **composants OWL**, zones en template, logique offline intacte (sync, règles document, ledger, actions objet, sauvegarde, pagination, recherche, dashboard), `onMounted`/`onWillDestroy`.
 - `view.js` monte `descriptor.Controller` (props params + env), comme le webclient natif.
+
+### Test global de bout en bout (itération 18)
+- `test-global-boot-owl.mjs` : boot du `main.js` réel dans jsdom (PWA complète, stubs Dexie/réseau) — login → home → liste → group by → kanban → form → save en file, 0 erreur console inattendue ;
+- correctifs révélés par le test global :
+  - **race de re-render** : `renderCurrentPage` (list) et `renderCurrent` (kanban) attendent un frame (`requestAnimationFrame`) avant de lire le host `t-ref` — un setter d'état réactif programme un patch OWL qui recrée les zones ; lire le host avant donnait une cible détachée ;
+  - **ancres des menus du control panel** : `t-on-click.stop.prevent` (au lieu de `.stop`) — `href="#"` sans `preventDefault` vidait le hash et renvoyait à l'accueil ;
+  - **quick create depuis la liste** : la branche kanban du `ListController` passe `onQuickCreate` (même file hors ligne `queueAction` → sync → promotion d'id, parité itération 13) + `flashStatus`.
 
 ### Control panel + breadcrumb (itération 7)
 - `ControlPanel` OWL embeddé dans les contrôleurs, props-driven (`display`, `breadcrumb`, `pager` `{page,pageSize,total}`, `views`, `groups`, `filters`, `favorites`, `query`), callbacks (onNew/onSearch/onPage/onSwitch/onGroupBy/onToggleFilter/onSelectFavorite/onSaveFavorite/onDeleteFavorite/onSave/onUndo), **debounce recherche internalisé**.

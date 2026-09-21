@@ -8,12 +8,23 @@
 
 /** 
  * Converts a URL fragment string 
- * (e.g., #action=list&model=sale.order&id=15) into a simple JS object. */
+ * (e.g. #tag=list_view&model=sale.order&id=15) into a simple JS object.
+ * Les valeurs sérialisées en JSON par stateToHash (objets) sont
+ * restaurées en objets.
+ */
 function parseHash(hash) {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
   const params = new URLSearchParams(raw);
   const state = {};
   for (const [key, value] of params.entries()) {
+    if (value.startsWith("{") || value.startsWith("[")) {
+      try {
+        state[key] = JSON.parse(value);
+        continue;
+      } catch (e) {
+        // valeur qui commence par {/[ mais n'est pas du JSON : gardée telle quelle
+      }
+    }
     state[key] = value;
   }
   return state;
@@ -22,12 +33,15 @@ function parseHash(hash) {
 /** 
  * Inverse function of parseHash.
  * It converts a JS state object into a formatted URL query string.
+ * Les valeurs OBJETS (ex: redirectTo d'une action) sont sérialisées en
+ * JSON -- URLSearchParams seul produirait "[object Object]", qui casse
+ * le deep-link (refresh pendant l'écran de login).
  */
 function stateToHash(state) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(state || {})) {
     if (value !== undefined && value !== null && value !== "") {
-      params.set(key, String(value));
+      params.set(key, typeof value === "object" ? JSON.stringify(value) : String(value));
     }
   }
   return params.toString();

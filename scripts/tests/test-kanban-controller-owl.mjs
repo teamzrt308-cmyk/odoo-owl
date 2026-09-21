@@ -284,7 +284,10 @@ qcInput.value = "SO005";
 qcInput.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 let qcOk = false;
 for (let i = 0; i < 200 && !qcOk; i++) {
-  qcOk = cardsIn(colByTitle("Brouillon")).some((c) => c.textContent.includes("SO005"));
+  // le re-render différé (rAF) détruit/recrée les colonnes : col peut
+  // être absente un instant -> polling défensif
+  const col = colByTitle("Brouillon");
+  qcOk = !!col && cardsIn(col).some((c) => c.textContent.includes("SO005"));
   if (!qcOk) await tick();
 }
 ok(qcOk && cardsIn(colByTitle("Brouillon")).length === 3, "qc/dnd : carte SO005 créée dans « Brouillon » (3 cartes)");
@@ -293,7 +296,12 @@ ok(!!createEntry && createEntry.payload.includes('"name":"SO005"') && createEntr
    "qc/dnd : create en file (name SO005 + state draft)");
 
 // surlignage de la colonne cible pendant le glisser
-const so002 = cardsIn(colByTitle("Brouillon")).find((c) => c.textContent.includes("SO002"));
+let so002 = null;
+for (let i = 0; i < 200 && !so002; i++) {
+  const col = colByTitle("Brouillon");
+  so002 = col ? cardsIn(col).find((c) => c.textContent.includes("SO002")) : null;
+  if (!so002) await tick();
+}
 so002.dispatchEvent(Object.assign(new dom.window.Event("dragstart", { bubbles: true }), { dataTransfer: { setData() {}, effectAllowed: null } }));
 colByTitle("Validé").dispatchEvent(new dom.window.Event("dragover", { bubbles: true, cancelable: true }));
 let highlighted = false;
@@ -311,10 +319,17 @@ so002.dispatchEvent(Object.assign(new dom.window.Event("dragstart", { bubbles: t
 colByTitle("Validé").dispatchEvent(Object.assign(new dom.window.Event("drop", { bubbles: true, cancelable: true }), { dataTransfer: { getData: () => "" } }));
 let moved = false;
 for (let i = 0; i < 200 && !moved; i++) {
-  moved = cardsIn(colByTitle("Validé")).some((c) => c.textContent.includes("SO002"));
+  const col = colByTitle("Validé");
+  moved = !!col && cardsIn(col).some((c) => c.textContent.includes("SO002"));
   if (!moved) await tick();
 }
-ok(moved && cardsIn(colByTitle("Brouillon")).length === 2, "qc/dnd : SO002 déplacée vers « Validé »");
+let draftCount = 0;
+for (let i = 0; i < 200 && !draftCount; i++) {
+  const col = colByTitle("Brouillon");
+  draftCount = col ? cardsIn(col).length : 0;
+  if (!draftCount) await tick();
+}
+ok(moved && draftCount === 2, "qc/dnd : SO002 déplacée vers « Validé »");
 const writeEntry = db.sync_queue.rows.find((r) => r.operation === "write");
 ok(!!writeEntry && writeEntry.payload.includes('"id":2') && writeEntry.payload.includes('"state":"done"'),
    "qc/dnd : write en file (id 2 -> state done)");
@@ -326,12 +341,18 @@ ok(listRow && listRow.records.find((r) => String(r.id) === "2" && r.state === "d
 
 // DnD d'une carte tmp (create EN FILE) : payload du create amendé, pas de write
 const writesBefore = db.sync_queue.rows.filter((r) => r.operation === "write").length;
-const so005 = cardsIn(colByTitle("Brouillon")).find((c) => c.textContent.includes("SO005"));
+let so005 = null;
+for (let i = 0; i < 200 && !so005; i++) {
+  const col = colByTitle("Brouillon");
+  so005 = col ? cardsIn(col).find((c) => c.textContent.includes("SO005")) : null;
+  if (!so005) await tick();
+}
 so005.dispatchEvent(Object.assign(new dom.window.Event("dragstart", { bubbles: true }), { dataTransfer: { setData() {}, effectAllowed: null } }));
 colByTitle("Validé").dispatchEvent(Object.assign(new dom.window.Event("drop", { bubbles: true, cancelable: true }), { dataTransfer: { getData: () => "" } }));
 let movedTmp = false;
 for (let i = 0; i < 200 && !movedTmp; i++) {
-  movedTmp = cardsIn(colByTitle("Validé")).some((c) => c.textContent.includes("SO005"));
+  const col = colByTitle("Validé");
+  movedTmp = !!col && cardsIn(col).some((c) => c.textContent.includes("SO005"));
   if (!movedTmp) await tick();
 }
 ok(movedTmp, "qc/dnd : carte tmp SO005 déplacée vers « Validé »");

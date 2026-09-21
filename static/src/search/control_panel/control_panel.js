@@ -110,12 +110,12 @@ export class ControlPanel extends owl.Component {
             <div t-if="state.groupByMenuOpen" class="dropdown-menu show o_groupby_menu"
                  style="position: absolute; top: 100%; left: 0; z-index: 1000; min-width: 200px;">
               <a href="#" t-att-class="'dropdown-item d-flex align-items-center gap-2' + (groups.current === null ? ' active' : '')"
-                 t-on-click.stop="() => this.selectGroupBy(null)">
+                 t-on-click.stop.prevent="() => this.selectGroupBy(null)">
                 Aucun groupe <i t-if="groups.current === null" class="fa fa-check ms-auto"/>
               </a>
               <a t-foreach="groups.available" t-as="g" t-key="g.name" href="#"
                  t-att-class="'dropdown-item d-flex align-items-center gap-2' + (groups.current === g.name ? ' active' : '')"
-                 t-on-click.stop="() => this.selectGroupBy(g.name)">
+                 t-on-click.stop.prevent="() => this.selectGroupBy(g.name)">
                 <t t-esc="g.label"/><i t-if="groups.current === g.name" class="fa fa-check ms-auto"/>
               </a>
             </div>
@@ -141,7 +141,7 @@ export class ControlPanel extends owl.Component {
                 <button type="button" class="btn btn-primary btn-sm text-nowrap o_save_favorite_button"
                         t-on-click="() => this.saveFavorite()">Enregistrer</button>
               </div>
-              <a t-else="" href="#" class="dropdown-item o_add_favorite" t-on-click.stop="() => this.openFavoriteInput()">
+              <a t-else="" href="#" class="dropdown-item o_add_favorite" t-on-click.stop.prevent="() => this.openFavoriteInput()">
                 Enregistrer la recherche actuelle
               </a>
             </div>

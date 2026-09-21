@@ -22,7 +22,8 @@
 import { CONFIG, getApiKey, getUserId } from "../../core/browser/session.js";
 import { getSecurityInfo } from "../../core/user_service.js";
 import { getModuleManifest, resolveModelViews } from "../view_service.js";
-import { getListRecordsSmart, getPurchaseDashboardSmart } from "../../core/list_cache.js";
+import { getListRecordsSmart, getPurchaseDashboardSmart, upsertLocalListRecord } from "../../core/list_cache.js";
+import { queueAction, syncPendingActions } from "../../core/network/rpc_service.js";
 import { formatCellValue, recordMatchesQuery } from "./list_renderer_utils.js";
 import { mountListView } from "./list_renderer.js";
 import { parseListArch } from "./list_arch_parser.js";
@@ -108,6 +109,19 @@ export class ListController extends owl.Component {
 
   get cpQuery() {
     return (this.ui && this.ui.searchQuery) || "";
+  }
+
+  /** Message éphémère sous la barre de contrôle (retour quick create…). */
+  flashStatus(message) {
+    const host = this.statusHostRef && this.statusHostRef.el;
+    if (!host) return;
+    host.innerHTML = "";
+    const el = document.createElement("div");
+    el.className = "text-muted small px-3 py-1";
+    el.textContent = message;
+    host.appendChild(el);
+    clearTimeout(this._flashTimer);
+    this._flashTimer = setTimeout(() => el.remove(), 3000);
   }
 
   setup() {
@@ -265,6 +279,11 @@ export class ListController extends owl.Component {
 
     async function renderCurrentPage() {
       const token = ++renderToken;
+      // Laisse OWL appliquer les re-renders réactifs déjà programmés
+      // (rAF) : setter ui.groupBy/ui.activeFilters planche un patch du
+      // composant qui RECREE les zones t-ref -- lire le host avant le
+      // patch donnerait une cible détachée pendant le mount.
+      await new Promise((resolve) => (window.requestAnimationFrame || setTimeout)(resolve));
       const listHost = self.listHostRef.el;
       if (!listHost) return;
 
@@ -288,6 +307,39 @@ export class ListController extends owl.Component {
         // webclient d'Odoo (arch -> template -> composant OWL).
         const kanbanTarget = document.createElement("div");
         listHost.appendChild(kanbanTarget);
+        // Quick create (parité itération 13) : le geste vit dans le
+        // renderer, le modèle passe par la même file hors ligne que le
+        // contrôleur kanban dédié (queueAction -> sync -> promotion d'id).
+        const fieldsInfo = currentViewFieldsInfo || {};
+        const nameField =
+          ["name", ...Object.keys(fieldsInfo)].find((f) => (fieldsInfo[f] || {}).type === "char") || null;
+        const onQuickCreate = async (columnKey, name) => {
+          const info = self.ui.groupBy ? fieldsInfo[self.ui.groupBy] || null : null;
+          const rawKey = columnKey.includes(":") ? columnKey.slice(columnKey.indexOf(":") + 1) : columnKey;
+          let groupValue = rawKey === "__none__" ? false : rawKey;
+          if (info && info.type === "boolean") groupValue = rawKey === "1";
+          const values = {};
+          if (nameField) values[nameField] = name;
+          if (self.ui.groupBy) values[self.ui.groupBy] = groupValue;
+          try {
+            const localUuid = await queueAction(model, "create", values, "generic");
+            const tmpRecord = { id: `tmp:${localUuid}`, ...values };
+            await upsertLocalListRecord(model, actionId, tmpRecord);
+            self.flashStatus("Carte créée localement — sera synchronisée dès que possible.");
+            renderCurrentPage();
+            if (navigator.onLine) {
+              const result = await syncPendingActions();
+              const realId = result.createdIds && result.createdIds[localUuid];
+              if (realId) {
+                await upsertLocalListRecord(model, actionId, { id: realId, ...values });
+                renderCurrentPage();
+              }
+            }
+          } catch (err) {
+            console.warn("[list_controller] Échec quick create :", err);
+            self.flashStatus("Impossible de créer la carte hors ligne.");
+          }
+        };
         try {
           const { destroy } = await mountKanbanView(
             kanbanTarget,
@@ -295,7 +347,8 @@ export class ListController extends owl.Component {
             currentViewFieldsInfo,
             pageRecords,
             onRecordOpen,
-            self.ui.groupBy
+            self.ui.groupBy,
+            { onQuickCreate }
           );
           if (token !== renderToken) {
             destroy(); // la page a de nouveau changé pendant le mount -> on jette le rendu

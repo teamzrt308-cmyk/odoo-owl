@@ -322,6 +322,10 @@ export class KanbanController extends owl.Component {
 
     async function renderCurrent() {
       const token = ++renderToken;
+      // Laisse OWL appliquer les re-renders réactifs programmés (rAF) :
+      // un patch du composant recrée les zones t-ref, et lire le host
+      // avant donnerait une cible détachée (même race que la liste).
+      await new Promise((resolve) => (window.requestAnimationFrame || setTimeout)(resolve));
       const host = self.rendererHostRef.el;
       if (!host) return;
 

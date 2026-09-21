@@ -59,4 +59,10 @@ done
   conventions façon Odoo 17, compilation du notebook dans le template
   form, composants ControlPanel/Breadcrumb).
 
+- `test-global-boot-owl.mjs` : **test global** — boot du `main.js`
+  RÉEL dans jsdom de bout en bout : login → home menu → carte Ventes →
+  liste (cache hors ligne) → group by État → kanban (quick create
+  présent) → form fiche 42 → save (file hors ligne, 0 erreur console
+  inattendue). Vérifie le câblage croisé de TOUTES les itérations.
+
 Ces tests utilisent un stub Dexie minimal et ne touchent jamais le réseau.
