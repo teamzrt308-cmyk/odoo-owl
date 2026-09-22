@@ -12,3 +12,10 @@
 .oe_stat_button .o_stat_icon { font-size: 1.5rem; color: #1f3864; opacity: 0.85; }
 .oe_stat_button .o_stat_info { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; }
 .oe_stat_button .o_stat_text { white-space: nowrap; }
+
+/* Marqueur visuel required (contrat field_bridge, dynamic_field_attrs) */
+.o_field_required > label.o_form_label::after {
+  content: " *";
+  color: #d9534f;
+  font-weight: bold;
+}

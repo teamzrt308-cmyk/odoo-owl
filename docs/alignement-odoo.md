@@ -367,6 +367,20 @@ Correctifs révélés par l'audit (`scripts/tests/audit-manifest.mjs
 2. i18n, router, e2e navigateur, a11y.
 
 ## Écarts assumés (spécificité hors ligne, à ne PAS « corriger »)
-- Champs montés par `field_bridge` (contrat DOM sérialiseur) plutôt que tags `<Field>` OWL ;
+- **PRINCIPE ARCHITECTURAL (décision explicite, à ne PAS inverser)** : le
+  moteur conserve le contrat **Arch XML -> sérialisation -> field_bridge
+  -> DOM** et NON Arch -> `<Field>` OWL -> rendu OWL. Ne JAMAIS
+  « corriger » en remplaçant field_bridge par les composants `<Field>`
+  d'OWL. Le contrat est cohérent tant que field_bridge prend en charge :
+  valeur (`#field-<name>` / `getLines()`), type (dispatch
+  SUPPORTED_FIELD_WIDGETS + widget_registry), readonly (statique +
+  expressions, ré-évaluées live), **invisible (ré-évaluée LIVE, cellule
+  masquée/rendue)**, required (attribut + marqueur visuel
+  `.o_field_required`), widget (registre it. 21), **événements** (les
+  widgets OWL diffusent `change` qui bulle -- `emitFieldChange`,
+  règle d'or : ne notifient que les actions UTILISATEUR, jamais les
+  re-renders programmatiques type applyLineUpdates, sinon boucle de
+  sync), relations (m2o hidden `_id`, m2m JSON, o2m composant +
+  sub_fields). Suite garde-fou : `test-field-bridge-contract.mjs` ;
 - règles métier locales (`rules_engine`) au lieu des onchange serveur -- mapping Odoo→moteur documenté (itération 17) ;
 - templates compilés depuis l'arch au lieu de templates qweb servis par le serveur.

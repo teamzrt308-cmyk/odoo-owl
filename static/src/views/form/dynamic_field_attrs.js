@@ -31,6 +31,19 @@ import { collectFormData } from "./form_serializer.js";
 export function applyDynamicAttrs(node, inputEl, currentValues) {
   if (!inputEl) return;
 
+  // INVISIBLE dynamique : comme readonly/required, ré-évalué à chaque
+  // modification (attachLiveBusinessRules). Chez Odoo c'est la CELLULE
+  // entière (label + widget) qui est masquée (modificateur
+  // o_invisible_modifier) -- on masque donc [data-field-row].
+  // NB : invisible="1"/"True" (statique) ne passe JAMAIS ici -- ces champs
+  // sont déjà éliminés à la compilation de l'arch (isNodeVisible).
+  const cellEl = inputEl.closest ? inputEl.closest("[data-field-row]") : null;
+  const invisibleExpr = node.getAttribute("invisible");
+  if (invisibleExpr && invisibleExpr !== "1" && invisibleExpr !== "True") {
+    const hidden = evaluateSimpleCondition(invisibleExpr, currentValues) === true;
+    if (cellEl) cellEl.style.display = hidden ? "none" : "";
+  }
+
   const readonlyExpr = node.getAttribute("readonly");
   if (readonlyExpr === "1" || readonlyExpr === "True") {
     markReadonly(inputEl);
@@ -64,6 +77,10 @@ export function markReadonly(el) {
 }
 
 export function markRequired(el) {
+  // Marqueur visuel façon Odoo (label en rouge avec astérisque) posé
+  // sur la cellule -- voir css/odoo_widgets.css (.o_field_required).
+  const cellEl = el.closest ? el.closest("[data-field-row]") : null;
+  if (cellEl) cellEl.classList.add("o_field_required");
   if ("required" in el) {
     el.required = true;
   } else {
@@ -79,6 +96,14 @@ export function markRequired(el) {
  */
 export function resetDynamicAttrs(el, baseRequired) {
   if (!el) return;
+
+  // Rollback complet avant ré-évaluation : visibilité (invisible
+  // dynamique) et marqueur visuel required.
+  const cellEl = el.closest ? el.closest("[data-field-row]") : null;
+  if (cellEl) {
+    cellEl.style.display = "";
+    cellEl.classList.remove("o_field_required");
+  }
 
   if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") {
     if (el.type === "checkbox") {
@@ -114,7 +139,7 @@ export function attachLiveBusinessRules(archXmlString, containerEl, fieldsInfo) 
   const root = xmlDoc.documentElement;
 
   const dynamicFieldNodes = Array.from(root.querySelectorAll("field")).filter((node) => {
-    return ["readonly", "required"].some((key) => {
+    return ["readonly", "required", "invisible"].some((key) => {
       const raw = node.getAttribute(key);
       return raw && raw !== "1" && raw !== "True";
     });

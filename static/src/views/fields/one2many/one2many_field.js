@@ -24,7 +24,7 @@
  * (product_catalog.js), inséré dans un host dédié du template OWL.
  */
 
-import { renderOwlField } from "../../../owl/field_bridge.js";
+import { renderOwlField, emitFieldChange } from "../../../owl/field_bridge.js";
 import { evaluateSimpleCondition } from "../../../core/py_js/py_utils.js";
 import { runLineRules, checkOndeleteGuard } from "../../../model/rules_engine/rules_engine.js";
 import { getApiKey, CONFIG } from "../../../core/browser/session.js";
@@ -299,11 +299,23 @@ export class One2manyFieldOwl extends owl.Component {
    * qui n'ont plus à scraper le DOM des lignes.
    */
   _attachToHost(host) {
+    this._host = host;
     host._owlOne2many = true;
     host.getLines = () => this.getLines();
     host.getLineIds = () => this.getLineIds();
     host.applyLineUpdates = (rows) => this.applyLineUpdates(rows);
     host.adjustLineFields = (lineId, deltasByField) => this.adjustLineFields(lineId, deltasByField);
+  }
+
+  /**
+   * Contrat field_bridge : TOUTE mutation de lignes (saisie cellule,
+   * ajout, suppression, ajustement ledger) diffuse `change` sur l'hôte
+   * -- les bulles remontent au conteneur du formulaire et déclenchent la
+   * ré-évaluation des attrs dynamiques + les règles RACINE (ex:
+   * amount_total = Σ lignes), comme un input natif.
+   */
+  _notifyHostChanged() {
+    if (this._host) emitFieldChange(this._host);
   }
 
   // -------------------------------------------------------------------------
@@ -393,6 +405,7 @@ export class One2manyFieldOwl extends owl.Component {
       this.applyGenericLineAmount(item, col.field);
     }
     this.computeTotal();
+    this._notifyHostChanged();
   }
 
   /**
@@ -431,6 +444,7 @@ export class One2manyFieldOwl extends owl.Component {
     }
     this.removeItem(item);
     this.computeTotal();
+    this._notifyHostChanged(); // après la suppression effective (le guard peut l'annuler)
   }
 
   removeItem(item) {
@@ -467,6 +481,11 @@ export class One2manyFieldOwl extends owl.Component {
    * épargné, comme applyLineRowToDom() le faisait sur l'ancien rendu.
    */
   applyLineUpdates(rows) {
+    // PAS de _notifyHostChanged ici : cette méthode est appelée PAR la
+    // passe de règles (applyDocumentGraphToDom) pour re-rendre le résultat
+    // -- notifier re-déclencherait la synchro en boucle.
+
+    
     const lineItems = this.lineItems;
     (rows || []).forEach((row, idx) => {
       const item = lineItems[idx];
@@ -499,6 +518,9 @@ export class One2manyFieldOwl extends owl.Component {
    * validation hors-ligne d'une réception).
    */
   adjustLineFields(lineId, deltasByField) {
+    // PAS de notification : ajustement programmatique (affichage ledger).
+
+    
     const item = this.lineItems.find(
       (it) => it.id === lineId || String(it.id) === String(lineId)
     );
@@ -726,6 +748,7 @@ export class One2manyFieldOwl extends owl.Component {
    * déjà en mémoire pour éviter un aller-retour IndexedDB.
    */
   addLineWithRules(rowData, dbSnapshot = null) {
+    this._notifyHostChanged();
     const item = this.makeLineItem(rowData);
     this.state.items.push(item);
 

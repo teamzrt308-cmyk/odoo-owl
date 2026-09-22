@@ -6,7 +6,7 @@
  * l'input caché #field-<name> pour le sérialiseur.
  */
 import { selectionEntries, selectionLabel, selectionRank, hiddenValueInput } from "../selection_utils.js";
-import { computeReadonly } from "../../../owl/field_bridge.js";
+import { computeReadonly, emitFieldChange } from "../../../owl/field_bridge.js";
 
 export function renderPriorityField(name, info, node, initialValue) {
   const entries = selectionEntries(info);
@@ -34,7 +34,7 @@ export function renderPriorityField(name, info, node, initialValue) {
         const value = entries[i][0];
         hidden.value = String(value);
         paint(i);
-        hidden.dispatchEvent(new Event("change", { bubbles: true }));
+        emitFieldChange(hidden);
       });
     }
     wrap.appendChild(s);

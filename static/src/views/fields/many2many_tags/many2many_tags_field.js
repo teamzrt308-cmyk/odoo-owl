@@ -11,7 +11,7 @@
  * one2many -- callback onChange(ids).
  */
 
-import { renderOwlField } from "../../../owl/field_bridge.js";
+import { renderOwlField, emitFieldChange } from "../../../owl/field_bridge.js";
 import { getReferenceRecords } from "../../../core/reference_cache.js";
 
 export class Many2manyTagsFieldOwl extends owl.Component {
@@ -96,6 +96,8 @@ export class Many2manyTagsFieldOwl extends owl.Component {
 
   syncHiddenValue() {
     this.state.hiddenValue = JSON.stringify(this.state.selected.map(([id]) => id));
+    // Contrat field_bridge : diffusion `change` (règles racine + attrs).
+    emitFieldChange(this.hiddenRef.el);
     if (this.props.onChange) this.props.onChange(this.state.selected.map(([id]) => id));
   }
 

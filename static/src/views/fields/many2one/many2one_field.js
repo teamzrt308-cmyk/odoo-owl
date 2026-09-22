@@ -17,7 +17,7 @@
  * one2many (cellules produit des lignes) -- callback onChange(id|tmpRef).
  */
 
-import { renderOwlField, computeReadonly, computeRequired } from "../../../owl/field_bridge.js";
+import { renderOwlField, computeReadonly, computeRequired, emitFieldChange } from "../../../owl/field_bridge.js";
 import { queueAction } from "../../../core/network/rpc_service.js";
 import { notifications } from "../../../core/notifications/notification_service.js";
 import { getReferenceRecords } from "../../../core/reference_cache.js";
@@ -152,6 +152,9 @@ export class Many2oneFieldOwl extends owl.Component {
     this.state.valueId = record.id;
     this.state.open = false;
     this.state.matches = [];
+    // Contrat field_bridge : la sélection diffuse `change` (règles racine
+    // + attrs dynamiques), comme un input natif.
+    emitFieldChange(this.hiddenRef.el);
     if (this.props.onChange) this.props.onChange(record.id);
   }
 
@@ -166,6 +169,7 @@ export class Many2oneFieldOwl extends owl.Component {
       this.records.push({ id: tmpRef, display_name: this.state.query });
       this.state.display = this.state.query;
       this.state.valueId = tmpRef;
+      emitFieldChange(this.hiddenRef.el);
       if (this.props.onChange) this.props.onChange(tmpRef);
     } catch (err) {
       console.error("Création locale impossible:", err);

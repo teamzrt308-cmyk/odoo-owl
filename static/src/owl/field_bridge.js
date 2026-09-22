@@ -34,6 +34,27 @@ export function computeRequired(node, info, initialValues) {
 }
 
 /**
+ * CONTRAT ÉVÉNEMENTIEL field_bridge : les widgets OWL (many2one,
+ * many2many_tags, one2many, widgets du registre...) ne sont pas des
+ * <input> natifs -- quand leur valeur change ils diffusent un événement
+ * `change` qui BULLE jusqu'au conteneur du formulaire, exactement comme
+ * un input natif. C'est ce qui déclenche, sans aucun câblage spécifique :
+ *  - la ré-évaluation LIVE des attributs dynamiques
+ *    (dynamic_field_attrs.attachLiveBusinessRules) ;
+ *  - la cascade de règles métier RACINE (form_controller
+ *    ::scheduleDocumentRulesSync -> runDocumentRules, ex: amount_total
+ *    recalculé quand une LIGNE one2many change).
+ */
+export function emitFieldChange(el) {
+  if (!el) return;
+  // Event pris dans le REALM du document (le bundle et les widgets
+  // peuvent tourner dans un contexte vm différent du document jsdom/natif).
+  const View = el.ownerDocument && el.ownerDocument.defaultView;
+  const EV = (View && View.Event) || Event;
+  el.dispatchEvent(new EV("change", { bubbles: true }));
+}
+
+/**
  * Crée le conteneur synchrone + lance le mount OWL dedans + retourne le
  * conteneur immédiatement. C'est le cœur de l'adaptateur : chaque
  * renderXField() n'a plus qu'à l'appeler avec son Component et ses props.

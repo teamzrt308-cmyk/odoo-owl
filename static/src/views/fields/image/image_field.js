@@ -6,7 +6,7 @@
  * réseau) -- valeur base64 synchronisée dans l'input caché.
  */
 import { hiddenValueInput } from "../selection_utils.js";
-import { computeReadonly } from "../../../owl/field_bridge.js";
+import { computeReadonly, emitFieldChange } from "../../../owl/field_bridge.js";
 
 const PLACEHOLDER = "assets/default-app.png";
 
@@ -44,7 +44,7 @@ export function renderImageField(name, info, node, initialValue, initialValues) 
         const result = String(reader.result || "");
         hidden.value = result.split(",")[1] || "";
         img.src = result;
-        hidden.dispatchEvent(new Event("change", { bubbles: true }));
+        emitFieldChange(hidden);
       };
       reader.readAsDataURL(f);
     });

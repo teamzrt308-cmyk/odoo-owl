@@ -5,7 +5,7 @@
  * valeur synchronisée dans l'input caché #field-<name>.
  */
 import { selectionEntries, hiddenValueInput } from "../selection_utils.js";
-import { computeReadonly } from "../../../owl/field_bridge.js";
+import { computeReadonly, emitFieldChange } from "../../../owl/field_bridge.js";
 
 export function renderRadioField(name, info, node, initialValue, initialValues) {
   const readonly = computeReadonly(node, initialValues);
@@ -25,7 +25,7 @@ export function renderRadioField(name, info, node, initialValue, initialValues) 
     radio.addEventListener("change", () => {
       if (radio.checked) {
         hidden.value = String(key);
-        hidden.dispatchEvent(new Event("change", { bubbles: true }));
+        emitFieldChange(hidden);
       }
     });
     const text = document.createElement("span");
