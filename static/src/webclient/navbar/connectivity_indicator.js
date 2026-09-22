@@ -12,6 +12,7 @@
  */
 
 import { CONFIG } from "../../core/browser/session.js";
+import { withDb } from "../../core/browser/session.js";
 
 export class ConnectivityIndicator extends owl.Component {
   static template = owl.xml`
@@ -50,7 +51,7 @@ export class ConnectivityIndicator extends owl.Component {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000);
-      const response = await fetch(`${CONFIG.ODOO_BASE_URL}/offline_sync/ping`, {
+      const response = await fetch(withDb(`${CONFIG.ODOO_BASE_URL}/offline_sync/ping`), {
         method: "GET",
         cache: "no-store",
         signal: controller.signal,

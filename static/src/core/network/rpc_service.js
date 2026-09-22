@@ -8,6 +8,7 @@
 import { CONFIG, getApiKey } from "../browser/session.js";
 import { db } from "../orm_service.js";
 import { clearLedgerForSyncUuid } from "../local_ledger.js";
+import { withDb } from "../browser/session.js";
 
 /**
  * Generates a Universally Unique Identifier (UUID) on the client side 
@@ -81,7 +82,7 @@ export async function syncPendingActions() {
 
   try {
     // Sends a POST request to the /offline sync/push endpoint of the Odoo API.
-    const response = await fetch(`${CONFIG.ODOO_BASE_URL}/offline_sync/push`, {
+    const response = await fetch(withDb(`${CONFIG.ODOO_BASE_URL}/offline_sync/push`), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -243,7 +244,7 @@ export async function getConflictCount() {
 // "server" abandons the local change) to the backend, then updates the
 // local queue entry to reflect the outcome.
 export async function resolveConflict(localUuid, resolution, apiKey, baseUrl) {
-  const response = await fetch(`${baseUrl}/offline_sync/resolve_conflict`, {
+  const response = await fetch(withDb(`${baseUrl}/offline_sync/resolve_conflict`), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

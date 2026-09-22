@@ -4,6 +4,7 @@
 */
 
 import { db } from "./orm_service.js";
+import { withDb } from "./browser/session.js";
 
 // Generates a unique key to isolate price lists and 
 // catalogs based on the business context.
@@ -17,8 +18,7 @@ export async function fetchAndStoreCatalogProducts(model, partnerId, apiKey, bas
   const params = new URLSearchParams({ model });
   if (partnerId) params.set("partner_id", partnerId);
 
-  const response = await fetch(
-    `${baseUrl}/offline_sync/catalog/products?${params.toString()}`,
+  const response = await fetch(withDb(`${baseUrl}/offline_sync/catalog/products?${params.toString()}`),
     { headers: { Authorization: `Bearer ${apiKey}` } }
   );
 

@@ -16,6 +16,7 @@
 
 import { db } from "./orm_service.js";
 import { canPerformAction } from "../model/rules_engine/rules_engine.js";
+import { withDb } from "./browser/session.js";
 
 /* ---------------------------------------------------------------------- */
 /* Droits d'accès (ex core/user.js)                                       */
@@ -29,7 +30,7 @@ export async function fetchAndStoreSecurityInfo(apiKey, baseUrl, models = null) 
     url.searchParams.set("models", models.join(","));
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await fetch(withDb(url.toString()), {
     method: "GET",
     headers: { Authorization: `Bearer ${apiKey}` },
   });

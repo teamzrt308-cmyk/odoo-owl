@@ -15,7 +15,7 @@
  */
 
 import { registry } from "../../core/registry.js";
-import { CONFIG, saveSession } from "../../core/browser/session.js";
+import { CONFIG, saveSession, withDb } from "../../core/browser/session.js";
 import { fetchAndStoreSecurityInfo } from "../../core/user_service.js";
 import { ensureCacheOwnership } from "../../core/cache_owner.js";
 import { loadScopedCss, unloadScopedCss } from "../../core/assets.js";
@@ -51,6 +51,15 @@ export class Login extends owl.Component {
                          autocomplete="current-password" maxlength="4096" class="form-control" t-ref="password"/>
                 </div>
 
+                <div class="mb-3">
+                  <label for="login-db" class="form-label small text-muted mb-1">
+                    Base de données <span class="text-muted fw-normal">(laisser vide en mono-base)</span>
+                  </label>
+                  <input type="text" placeholder="ex : vente1" id="login-db"
+                         autocomplete="off" autocapitalize="off" spellcheck="false"
+                         class="form-control form-control-sm" t-ref="dbname"/>
+                </div>
+
                 <div class="clearfix oe_login_buttons text-center gap-1 d-grid mb-1 pt-3">
                   <button type="submit" id="login-btn" class="btn btn-primary" t-att-disabled="state.submitting"
                           t-esc="buttonLabel"/>
@@ -77,6 +86,7 @@ export class Login extends owl.Component {
   setup() {
     this.emailRef = owl.useRef("email");
     this.passwordRef = owl.useRef("password");
+    this.dbRef = owl.useRef("dbname");
     // phases : "" (repos), "login", "cache", "rights"
     this.state = owl.useState({ submitting: false, phase: "", error: "" });
   }
@@ -105,7 +115,12 @@ export class Login extends owl.Component {
     this.state.phase = "login";
 
     try {
-      const response = await fetch(`${CONFIG.ODOO_BASE_URL}/offline_sync/login`, {
+      // Sélecteur de base (durcissement multi-bases) : la base demandée
+      // passe en ?db= (le dispatch d'Odoo la résout) ; la base RÉSOLUE
+      // par le serveur fait foi dans la réponse (tampon de session).
+      const dbSelection = this.dbRef.el ? this.dbRef.el.value.trim() : "";
+      const loginUrl = withDb(`${CONFIG.ODOO_BASE_URL}/offline_sync/login`, dbSelection || null);
+      const response = await fetch(loginUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ login: email, password }),
@@ -118,16 +133,19 @@ export class Login extends owl.Component {
         return;
       }
 
+      const resolvedDb = data.db || dbSelection || undefined;
       saveSession({
         uid: data.uid,
         name: data.name,
         api_key: data.api_key,
+        db: resolvedDb,
       });
 
-      // Purge le cache local s'il appartenait à un autre utilisateur.
+      // Purge le cache local s'il appartenait à un autre utilisateur OU
+      // à une autre base (tampon {db, serverUrl} conservé dans cache_meta).
       this.state.phase = "cache";
       try {
-        await ensureCacheOwnership(data.uid);
+        await ensureCacheOwnership(data.uid, resolvedDb ? { db: resolvedDb, serverUrl: CONFIG.ODOO_BASE_URL } : null);
       } catch (cacheErr) {
         console.error("Erreur lors de la vérification du cache local :", cacheErr);
         this.setError("Erreur lors de l'initialisation du cache local. Réessayez.");

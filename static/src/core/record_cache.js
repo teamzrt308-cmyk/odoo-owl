@@ -6,14 +6,14 @@
  */
 
 import { db } from "./orm_service.js";
+import { withDb } from "./browser/session.js";
 
 /**
  * Downloads the complete data for a record from Odoo
  * and updates the local db.record_cache
  */
 export async function fetchAndStoreRecord(modelName, recordId, apiKey, baseUrl) {
-  const response = await fetch(
-    `${baseUrl}/offline_sync/read_record?model=${encodeURIComponent(modelName)}&id=${recordId}`,
+  const response = await fetch(withDb(`${baseUrl}/offline_sync/read_record?model=${encodeURIComponent(modelName)}&id=${recordId}`),
     { headers: { Authorization: `Bearer ${apiKey}` } }
   );
   if (!response.ok) throw new Error(`Erreur lecture enregistrement: ${response.status}`);

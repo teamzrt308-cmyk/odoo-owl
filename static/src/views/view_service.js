@@ -6,10 +6,10 @@
  */
 
 import { db } from "../core/orm_service.js";
+import { withDb } from "../core/browser/session.js";
 
 export async function fetchAndStoreModuleManifest(moduleName, apiKey, baseUrl) {
-  const response = await fetch(
-    `${baseUrl}/offline_sync/module_manifest?module=${encodeURIComponent(moduleName)}`,
+  const response = await fetch(withDb(`${baseUrl}/offline_sync/module_manifest?module=${encodeURIComponent(moduleName)}`),
     { headers: { Authorization: `Bearer ${apiKey}` } }
   );
 

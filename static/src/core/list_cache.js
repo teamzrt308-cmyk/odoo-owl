@@ -6,6 +6,7 @@
 */
 
 import { db } from "./orm_service.js";
+import { withDb } from "./browser/session.js";
 
 /**
  * Generates a unique indexing key to isolate different list view requests
@@ -36,7 +37,7 @@ export async function fetchAndStoreListRecords(
   if (actionId) url.searchParams.set("action", actionId);
   if (extraDomain) url.searchParams.set("extra_domain", JSON.stringify(extraDomain));
 
-  const response = await fetch(url.toString(), {
+  const response = await fetch(withDb(url.toString()), {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
   if (!response.ok) throw new Error(`Erreur liste ${modelName}: ${response.status}`);
@@ -129,7 +130,7 @@ export async function fetchAndStorePurchaseDashboard(apiKey, baseUrl, actionId =
   const url = new URL(`${baseUrl}/offline_sync/purchase_dashboard`);
   if (actionId) url.searchParams.set("action", actionId);
 
-  const response = await fetch(url.toString(), {
+  const response = await fetch(withDb(url.toString()), {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
   if (!response.ok) throw new Error(`Erreur dashboard achats: ${response.status}`);

@@ -496,3 +496,49 @@ Correctifs révélés par l'audit (`scripts/tests/audit-manifest.mjs
   17 autres, vertes à chaque étape ;
 - règles métier locales (`rules_engine`) au lieu des onchange serveur -- mapping Odoo→moteur documenté (itération 17) ;
 - templates compilés depuis l'arch au lieu de templates qweb servis par le serveur.
+
+## Durcissement multi-bases (garde de base)
+
+Objectif : empêcher qu'un appareil retargeté vers une AUTRE base Odoo
+(même serveur déplacé, `--db-filter` absent, sélecteur de base) rejoue
+des écritures locales (sync_queue) ou affiche des caches d'une base B
+sous la base A -- les ids n'y signifient rien de commun.
+
+Mécanismes (PWA) :
+
+- **Tampon de session** : `saveSession` grave désormais
+  `{db, serverUrl}` dans `offline_sync_session` ; `serverUrl` est
+  l'URL serveur utilisée au login, `db` la base résolue par le serveur
+  (nouveau champ `db` des réponses login/ping de l'addon).
+- **Étiquetage des fetch** : `withDb(url)` (session.js) ajoute
+  `?db=<base>` à TOUTES les URLs offline_sync (push, list, read,
+  reference, security, manifests, catalog, dashboard, ping) -- la base
+  est explicite même quand le host ne la détermine pas.
+- **Garde de boot** (`cache_owner.verifyLocalStamp`, branché dans le
+  doAction, mémoïsé) :
+  1. `session.serverUrl != CONFIG.ODOO_BASE_URL` -> divergence,
+     détectable HORS LIGNE ;
+  2. sinon, en ligne, ping `?db=session.db` -> la base renvoyée diffère
+     (ou la base n'existe plus, db_filter la rejette) -> divergence.
+  Divergence -> `window.confirm` si la file contient des actions
+  non synchronisées (OK = export JSON automatique puis purge,
+  Annuler = données conservées) -> purge des 10 stores Dexie
+  (`purgeAllTables`) + `clearSession` ; la garde d'authentification
+  redirige alors vers le login.
+- **Ownership étendu** : `ensureCacheOwnership(uid, stamp)` purge aussi
+  si le tampon `db_stamp` de `cache_meta` (base ou serveur) diffère,
+  même pour le MÊME uid.
+- **Sélecteur de base** (login) : champ optionnel « Base de données » ;
+  sa valeur passe en `?db=` au POST login, la base RÉSOLUE par le
+  serveur fait foi dans la session.
+
+Sessions antérieures au durcissement (sans tampon) : tolérées au boot
+(migration douce, warn en console) -- le tampon est posé au prochain
+login. En mono-base, tout ceci est transparent (ping renvoie la même
+base, withDb ajoute un paramètre inoffensif).
+
+Addon : `login` et `ping` renvoient `db: request.env.cr.dbname`
+(tampon) ; ping garde `auth="none"` et dégrade à `db: null` si aucune
+base n'est résolue. Suite : `scripts/tests/test-db-guard-owl.mjs` (22
+assertions : withDb, tampon, garde URL/base, confirm OK/Annulé,
+ownership uid+base, login OWL).

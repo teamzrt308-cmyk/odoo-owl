@@ -24,6 +24,7 @@ import { bus } from "../../core/bus/bus_service.js";
 import { resolveNaturalLanding } from "../navbar/navbar.js";
 import { saveCachedProfile, getCachedProfile } from "../../core/user_service.js";
 import { mountOwlApp } from "../../owl/app.js";
+import { withDb } from "../../core/browser/session.js";
 
 const CUSTOM_IMPLEMENTATIONS = {};
 
@@ -189,7 +190,7 @@ export class HomeMenu extends owl.Component {
     this.state.status = "";
 
     try {
-      const response = await fetch(`${CONFIG.ODOO_BASE_URL}/offline_sync/installed_apps`, {
+      const response = await fetch(withDb(`${CONFIG.ODOO_BASE_URL}/offline_sync/installed_apps`), {
         headers: { Authorization: `Bearer ${getApiKey()}` },
       });
 
@@ -216,7 +217,7 @@ export class HomeMenu extends owl.Component {
 
   async loadDashboardInfo() {
     try {
-      const response = await fetch(`${CONFIG.ODOO_BASE_URL}/offline_sync/dashboard_info`, {
+      const response = await fetch(withDb(`${CONFIG.ODOO_BASE_URL}/offline_sync/dashboard_info`), {
         headers: { Authorization: `Bearer ${getApiKey()}` },
       });
       if (!response.ok) {

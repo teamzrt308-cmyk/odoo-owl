@@ -18,6 +18,7 @@ import { registry } from "../../core/registry.js";
 import { router } from "../../core/browser/router_service.js";
 import { bus } from "../../core/bus/bus_service.js";
 import { getApiKey } from "../../core/browser/session.js";
+import { verifyLocalStamp } from "../../core/cache_owner.js";
 import { notifications } from "../../core/notifications/notification_service.js";
 import { effects } from "../../core/effects/rainbow_man.js";
 import { queueMethodCall, syncPendingActions } from "../../core/network/rpc_service.js";
@@ -61,6 +62,18 @@ export class ActionService {
    */
   async doAction(actionDescriptor, options = {}) {
     const { tag, ...params } = normalizeActionDescriptor(actionDescriptor);
+
+    // --- Garde de base (tampon multi-bases, une fois par boot) :
+    // purge locale + déconnexion si l'URL serveur ou la base diverge.
+    if (tag !== "login") {
+      const stamp = await verifyLocalStamp();
+      if (stamp.sessionCleared) {
+        return this.doAction(
+          { tag: "login", redirectTo: { tag, ...params } },
+          { replace: true }
+        );
+      }
+    }
 
     // --- Authentication Guard ---
     if (tag !== "login" && !getApiKey()) {

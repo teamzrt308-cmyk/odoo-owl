@@ -20,7 +20,33 @@ export function getSession() {
 
 /** Saves the local session (called immediately after a successful login). */
 export function saveSession(session) {
-  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  // Tampon de base (durcissement multi-bases) : on grave dans la session
+  // l'URL serveur utilisée au login (+ la base résolue par le serveur,
+  // fournie par l'appelant). Au boot, verifyLocalStamp() compare ce
+  // tampon à la réalité pour purger si l'appareil a changé de cible.
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+    ...session,
+    serverUrl: CONFIG.ODOO_BASE_URL,
+  }));
+}
+
+/** Base Odoo de la session (tampon multi-bases), ou null si absente. */
+export function getSessionDb() {
+  const session = getSession();
+  return session && session.db ? session.db : null;
+}
+
+/**
+ * Étiquette une URL offline_sync avec la base de la session
+ * (?db=<nom>). Indispensable en déploiement multi-bases sur un MÊME
+ * domaine (la base n'est plus devinable par le host) ; sans effet en
+ * mono-base. `explicitDb` (optionnel) sert au login, avant toute
+ * session.
+ */
+export function withDb(url, explicitDb = null) {
+  const db = explicitDb || getSessionDb();
+  if (!db) return url;
+  return url + (url.includes("?") ? "&" : "?") + "db=" + encodeURIComponent(db);
 }
 
 /** Clears the local session (log out, or invalid API key on the server side). */

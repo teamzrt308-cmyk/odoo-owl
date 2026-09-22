@@ -6,6 +6,7 @@
 */
 
 import { db } from "./orm_service.js";
+import { withDb } from "./browser/session.js";
 
 /**
  * Downloads all reference records for a model
@@ -13,8 +14,7 @@ import { db } from "./orm_service.js";
  * completely replaces the local cache for that model.
  */
 export async function fetchAndStoreReferenceRecords(modelName, apiKey, baseUrl) {
-  const response = await fetch(
-    `${baseUrl}/offline_sync/reference_records?model=${encodeURIComponent(modelName)}`,
+  const response = await fetch(withDb(`${baseUrl}/offline_sync/reference_records?model=${encodeURIComponent(modelName)}`),
     { headers: { Authorization: `Bearer ${apiKey}` } }
   );
 
