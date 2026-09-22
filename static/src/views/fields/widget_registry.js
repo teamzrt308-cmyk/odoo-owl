@@ -2,7 +2,7 @@
  * views/fields/widget_registry.js
  * ================================
  * Registre des WIDGETS explicites de l'arch (attribut widget="..."),
- * comme la clé "widget" des fields_get/webclient Odoo 17. renderField()
+ * comme la clé "widget" des fields_get/webclient Odoo 17. <FormField>
  * consulte ce registre AVANT le dispatch par type : un champ
  * <field name="priority" widget="priority"/> est rendu par le widget
  * priority même si son type est selection.

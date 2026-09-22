@@ -9,7 +9,6 @@
  * renderer one2many (callback onChange).
  */
 
-import { renderOwlField, computeReadonly, computeRequired } from "../../../owl/field_bridge.js";
 
 export class SelectionFieldOwl extends owl.Component {
   static template = owl.xml`
@@ -61,20 +60,4 @@ export class SelectionFieldOwl extends owl.Component {
     this.state.value = ev.target.value;
     if (this.props.onChange) this.props.onChange(ev.target.value);
   }
-}
-
-export function renderSelectionField(name, info, node, initialValue, initialValues) {
-  return renderOwlField(SelectionFieldOwl, {
-    name,
-    fieldTypeClass: "selection",
-    props: {
-      id: `field-${name}`,
-      name,
-      required: computeRequired(node, info, initialValues),
-      readonly: computeReadonly(node, initialValues),
-      options: info.selection || [],
-      initialValue:
-        initialValue === undefined || initialValue === false ? "" : String(initialValue),
-    },
-  });
 }

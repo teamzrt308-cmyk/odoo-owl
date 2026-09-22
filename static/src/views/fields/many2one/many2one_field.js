@@ -1,7 +1,7 @@
 /**
  * views/fields/many2one/many2one_field.js
  * Widget de champ Many2one rendu par OWL (recherche + dropdown), via
- * owl/field_bridge.js -- même flux que chez Odoo où Many2one est un
+ * pipeline <FormField> -- même flux que chez Odoo où Many2one est un
  * composant OWL (AutoComplete) alimenté par les enregistrements de
  * référence. Hors ligne, la source est le cache local
  * core/reference_cache.js (id -> display_name), jamais le réseau.
@@ -17,7 +17,7 @@
  * one2many (cellules produit des lignes) -- callback onChange(id|tmpRef).
  */
 
-import { renderOwlField, computeReadonly, computeRequired, emitFieldChange } from "../../../owl/field_bridge.js";
+import { emitFieldChange } from "../../../owl/field_events.js";
 import { queueAction } from "../../../core/network/rpc_service.js";
 import { notifications } from "../../../core/notifications/notification_service.js";
 import { getReferenceRecords } from "../../../core/reference_cache.js";
@@ -152,7 +152,7 @@ export class Many2oneFieldOwl extends owl.Component {
     this.state.valueId = record.id;
     this.state.open = false;
     this.state.matches = [];
-    // Contrat field_bridge : la sélection diffuse `change` (règles racine
+    // Contrat événementiel : la sélection diffuse `change` (règles racine
     // + attrs dynamiques), comme un input natif.
     emitFieldChange(this.hiddenRef.el);
     if (this.props.onChange) this.props.onChange(record.id);
@@ -185,7 +185,10 @@ export class Many2oneFieldOwl extends owl.Component {
  * common cases found in actual view architectures (no_create, no_open,
  * currency_field, etc.) — not a full Python parser.
  */
-function parseOdooOptions(str) {
+/**
+ * Exporté : partagé avec field_component.buildPropsFor (canCreate).
+ */
+export function parseOdooOptions(str) {
   if (!str) return {};
   try {
     const jsonLike = str
@@ -197,28 +200,4 @@ function parseOdooOptions(str) {
     console.warn("Attribut options non parsé:", str, err);
     return {};
   }
-}
-
-export function renderMany2oneField(name, info, node, initialValue, initialValues) {
-  // can_create est calculé par get_view() côté serveur d'après les vraies
-  // permissions ORM du modèle lié ; no_create (dans "options") est un choix
-  // de configuration de vue, indépendant des permissions.
-  const options = node ? parseOdooOptions(node.getAttribute("options")) : {};
-  const canCreateAttr = node ? node.getAttribute("can_create") : null;
-  const allowCreate = !options.no_create && canCreateAttr !== "False";
-
-  return renderOwlField(Many2oneFieldOwl, {
-    name,
-    fieldTypeClass: "many2one",
-    props: {
-      id: `field-${name}`,
-      name,
-      relation: info.relation,
-      placeholder: node ? (node.getAttribute("placeholder") || "") : "",
-      required: computeRequired(node, info, initialValues),
-      readonly: computeReadonly(node, initialValues),
-      canCreate: allowCreate,
-      initialValue: initialValue || false,
-    },
-  });
 }

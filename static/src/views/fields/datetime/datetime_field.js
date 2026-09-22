@@ -5,7 +5,6 @@
  * en sous-composant OWL du renderer one2many (callback onChange).
  */
 
-import { renderOwlField, computeReadonly, computeRequired } from "../../../owl/field_bridge.js";
 
 export class DatetimeFieldOwl extends owl.Component {
   static template = owl.xml`
@@ -51,19 +50,4 @@ export class DatetimeFieldOwl extends owl.Component {
     this.state.value = ev.target.value;
     if (this.props.onChange) this.props.onChange(ev.target.value);
   }
-}
-
-export function renderDatetimeField(name, info, node, initialValue, initialValues) {
-  return renderOwlField(DatetimeFieldOwl, {
-    name,
-    fieldTypeClass: "datetime",
-    props: {
-      id: `field-${name}`,
-      name,
-      placeholder: node ? (node.getAttribute("placeholder") || "") : "",
-      required: computeRequired(node, info, initialValues),
-      readonly: computeReadonly(node, initialValues),
-      initialValue: initialValue ? String(initialValue) : "",
-    },
-  });
 }

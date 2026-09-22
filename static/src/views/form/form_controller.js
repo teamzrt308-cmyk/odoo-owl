@@ -25,9 +25,8 @@ import { getReferenceRecordsSmart } from "../../core/reference_cache.js";
 import { getRecordSmart } from "../../core/record_cache.js";
 import { getSecurityInfo } from "../../core/user_service.js";
 import { mountFormRenderer } from "./form_renderer.js";
-import { attachLiveBusinessRules } from "./dynamic_field_attrs.js";
 import { runDocumentRules, validateDocument, checkRequiredFields, computeStockEffects, computeOptimisticStateUpdate, canRunObjectAction } from "../../model/rules_engine/rules_engine.js";
-import { collectFormData, buildDocumentGraph, applyDocumentGraphToDom } from "./form_serializer.js";
+import { collectFormData, buildDocumentGraph } from "./form_serializer.js";
 import { addLedgerDelta, getAggregatedDeltasByField } from "../../core/local_ledger.js";
 import { patchCachedRecord } from "../../core/record_cache.js";
 import { router } from "../../core/browser/router_service.js";
@@ -148,17 +147,12 @@ export class FormController extends owl.Component {
     currentContainer = host;
     el.dataset.model = model;
 
-    if (host._formState) {
-      // Pipeline <FormField> : invisible/readonly/required sont RÉACTIFS
-      // dans le composant de champ -- plus aucune mutation DOM
-      // impérative (dynamic_field_attrs est la couche de transition).
-      cleanupRules = () => {};
-    } else {
-      cleanupRules = attachLiveBusinessRules(archXml, el, currentFieldsInfo);
-    }
-    // Ces écouteurs restent dans les DEUX pipelines : tout `change` qui
-    // bulle (dont ceux publiés par <FormField>) déclenche la passe de
-    // règles métier (debounce 200 ms).
+    // Pipeline <FormField> : invisible/readonly/required sont RÉACTIFS
+    // dans le composant de champ (itération 24 : la couche impérative
+    // dynamic_field_attrs est supprimée -- plus aucun fallback DOM).
+    // Tout `change` qui bulle (publié par <FormField>, les widgets
+    // vanilla et les inputs natifs) déclenche la passe de règles
+    // métier (debounce 200 ms).
     el.addEventListener("input", scheduleDocumentRulesSync);
     el.addEventListener("change", scheduleDocumentRulesSync);
     await ready; // toutes les saisies existent avant la 1re passe de règles
@@ -279,14 +273,10 @@ export class FormController extends owl.Component {
         const graph = buildDocumentGraph(container, fieldsInfo, currentReferenceValues);
         const updatedGraph = await runDocumentRules(model, graph);
 
-        if (container._formState) {
-          // Pipeline <FormField> : injection RÉACTIVE du graphe racine
-          // dans le record du renderer (les champs se re-rendent eux-
-          // mêmes). Les one2many restent pilotés par leur API.
-          container._formState.applyGraph(updatedGraph);
-        } else {
-          applyDocumentGraphToDom(container, fieldsInfo, updatedGraph);
-        }
+        // Injection RÉACTIVE du graphe racine dans le record du renderer
+        // (les <FormField> se re-rendent eux-mêmes). Les lignes one2many
+        // restent pilotées par l'API du composant (voir ci-dessous).
+        if (container._formState) container._formState.applyGraph(updatedGraph);
 
         // Les lignes one2many sont mises à jour via l'API du composant OWL
         // du widget (voir fields/one2many/one2many_field.js) -- l'état

@@ -10,8 +10,9 @@ done
 ```
 
 - `test-fields-owl.mjs` : widgets de champ simples OWL (char, text, integer,
-  float, boolean, selection, date, datetime, monetary) — contrat DOM
-  (id/hidden/onChange) et sync onWillUpdateProps.
+  float, boolean, selection, date, datetime, monetary) — montage via le
+  dérivateur de production buildPropsFor (le même que <FormField>),
+  contrat DOM (id/hidden/onChange) et sync onWillUpdateProps.
 - `test-relational-owl.mjs` : many2one (recherche, création locale tmp:<uuid>,
   no_create), many2many_tags (badges + JSON), one2many (règles métier,
   total réactif, getLines/applyLineUpdates/adjustLineFields, colonnes
@@ -57,7 +58,8 @@ done
 - `test-kanban-owl.mjs` : pilote OWL de la vue kanban (arch → template).
 - `test-structure.mjs` : invariants d'architecture (registres, chemins,
   conventions façon Odoo 17, compilation du notebook dans le template
-  form, composants ControlPanel/Breadcrumb).
+  form, composants ControlPanel/Breadcrumb, attrs dynamiques RÉACTIFS
+  via le vrai mountFormRenderer -- la couche impérative est supprimée).
 
 - `test-global-boot-owl.mjs` : **test global** — boot du `main.js`
   RÉEL dans jsdom de bout en bout : login → home menu → carte Ventes →

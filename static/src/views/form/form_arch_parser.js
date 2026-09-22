@@ -7,15 +7,25 @@
  * générer le moindre DOM. Comme dans le webclient natif, le renderer
  * (form_renderer.js) reçoit un TEMPLATE compilé depuis l'arch.
  *
- * Spécificité hors ligne : les widgets de champ ne sont pas des tags
- * <Field> OWL dans le template (les composants de champ du moteur sont
- * montés par owl/field_bridge.js pour préserver le contrat DOM du
- * sérialiseur) -- le template n'emporte que des EMPLACEMENTS
- * (data-form-slot), remplis par FormRenderer après le mount.
+ * Pipeline natif (it. 23) : les champs sont émis DIRECTEMENT comme
+ * composants <FormField> dans le template (voir field_component.js) --
+ * plus aucun emplacement impératif ; le contrat DOM du sérialiseur
+ * (#field-<name>, hidden inputs, APIs one2many) est porté par les
+ * composants eux-mêmes.
  */
 
 import { isNodeVisible, evaluateSimpleCondition } from "../../core/py_js/py_utils.js";
-import { canRenderField } from "../fields/field.js";
+// Types de champs rendables par <FormField> (le statusbar du <header>
+// est traité à part par emitHeader). Remplace fields/field.js, supprimé
+// avec le dispatch impératif renderField (itération 24).
+const RENDERABLE_FIELD_TYPES = new Set([
+  "char", "text", "integer", "float", "boolean", "selection",
+  "date", "datetime", "many2one", "one2many", "monetary", "many2many",
+]);
+
+function canRenderField(info) {
+  return !!info && RENDERABLE_FIELD_TYPES.has(info.type);
+}
 
 const TEMPLATE_NAME = "form_view_compiled";
 
@@ -60,13 +70,14 @@ function getItemSpan(node) {
 }
 
 /**
- * Enregistre un emplacement de champ (monté impérativement par
- * FormRenderer après le render) et retourne son markup.
+ * Enregistre le champ (nœud d'arch figé, consommé par le composant
+ * <FormField> via fieldNodes/env) et retourne son markup.
  * mode :
- *  - "cell"         : la cellule complète de renderField (label inclus),
- *  - "cell-nolabel" : la cellule sans son <label> (le template l'émet),
- *  - "widget"       : seuls les enfants du .o_field_widget (paire
- *                     <label for="..."> explicite, comme buildLabeledItem).
+ *  - "cell"         : cellule complète (label rendu PAR le composant),
+ *  - "cell-nolabel" : cellule sans son <label> (le template l'émet),
+ *  - "widget"       : champ nu -- seuls les enfants du .o_field_widget
+ *                     (paire <label for="..."> explicite, comme
+ *                     buildLabeledItem).
  */
 function emitFieldSlot(node, ctx, mode) {
   const index = ctx.slots.length;

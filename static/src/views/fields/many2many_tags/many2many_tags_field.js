@@ -11,7 +11,7 @@
  * one2many -- callback onChange(ids).
  */
 
-import { renderOwlField, emitFieldChange } from "../../../owl/field_bridge.js";
+import { emitFieldChange } from "../../../owl/field_events.js";
 import { getReferenceRecords } from "../../../core/reference_cache.js";
 
 export class Many2manyTagsFieldOwl extends owl.Component {
@@ -135,17 +135,4 @@ export class Many2manyTagsFieldOwl extends owl.Component {
     this.state.selected = this.state.selected.filter(([sid]) => sid !== id);
     this.syncHiddenValue();
   }
-}
-
-export function renderMany2manyTagsField(name, info, node, initialValue, initialValues) {
-  return renderOwlField(Many2manyTagsFieldOwl, {
-    name,
-    fieldTypeClass: "many2many_tags",
-    props: {
-      id: `field-${name}`,
-      name,
-      relation: info.relation,
-      initialValue: Array.isArray(initialValue) ? initialValue : [],
-    },
-  });
 }

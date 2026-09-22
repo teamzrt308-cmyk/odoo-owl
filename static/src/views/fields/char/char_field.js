@@ -10,7 +10,6 @@
  * onWillUpdateProps -- sauf si l'input a le focus (saisie en cours).
  */
 
-import { renderOwlField, computeReadonly, computeRequired } from "../../../owl/field_bridge.js";
 
 export class CharFieldOwl extends owl.Component {
   static template = owl.xml`
@@ -58,19 +57,4 @@ export class CharFieldOwl extends owl.Component {
     this.state.value = ev.target.value;
     if (this.props.onChange) this.props.onChange(ev.target.value);
   }
-}
-
-export function renderCharField(name, info, node, initialValue, initialValues) {
-  return renderOwlField(CharFieldOwl, {
-    name,
-    fieldTypeClass: "char",
-    props: {
-      id: `field-${name}`,
-      name,
-      placeholder: node ? (node.getAttribute("placeholder") || "") : "",
-      required: computeRequired(node, info, initialValues),
-      readonly: computeReadonly(node, initialValues),
-      initialValue: initialValue || "",
-    },
-  });
 }

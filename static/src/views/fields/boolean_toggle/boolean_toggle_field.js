@@ -5,7 +5,8 @@
  * -- le CHECKBOX lui-même porte id="field-<name>" : le sérialiseur lit
  * el.checked comme pour le widget boolean natif.
  */
-import { computeReadonly, emitFieldChange } from "../../../owl/field_bridge.js";
+import { computeReadonly } from "../../form/field_attrs.js";
+import { emitFieldChange } from "../../../owl/field_events.js";
 
 export function renderBooleanToggleField(name, info, node, initialValue, initialValues) {
   const wrap = document.createElement("div");

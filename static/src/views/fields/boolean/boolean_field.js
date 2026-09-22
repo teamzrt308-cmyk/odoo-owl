@@ -5,7 +5,6 @@
  * sous-composant OWL du renderer one2many (callback onChange).
  */
 
-import { renderOwlField, computeReadonly } from "../../../owl/field_bridge.js";
 
 export class BooleanFieldOwl extends owl.Component {
   static template = owl.xml`
@@ -47,17 +46,4 @@ export class BooleanFieldOwl extends owl.Component {
     this.state.checked = ev.target.checked;
     if (this.props.onChange) this.props.onChange(ev.target.checked);
   }
-}
-
-export function renderBooleanField(name, info, node, initialValue, initialValues) {
-  return renderOwlField(BooleanFieldOwl, {
-    name,
-    fieldTypeClass: "boolean",
-    props: {
-      id: `field-${name}`,
-      name,
-      readonly: computeReadonly(node, initialValues),
-      initialValue: !!initialValue,
-    },
-  });
 }

@@ -5,7 +5,6 @@
  * one2many (callback onChange avec valeur canonique number|false).
  */
 
-import { renderOwlField, computeReadonly, computeRequired } from "../../../owl/field_bridge.js";
 
 export class IntegerFieldOwl extends owl.Component {
   static template = owl.xml`
@@ -58,21 +57,4 @@ export class IntegerFieldOwl extends owl.Component {
     this.state.value = ev.target.value;
     if (this.props.onChange) this.props.onChange(this.toCanonical(ev.target.value));
   }
-}
-
-export function renderIntegerField(name, info, node, initialValue, initialValues) {
-  return renderOwlField(IntegerFieldOwl, {
-    name,
-    fieldTypeClass: "integer",
-    props: {
-      id: `field-${name}`,
-      name,
-      placeholder: node ? (node.getAttribute("placeholder") || "") : "",
-      required: computeRequired(node, info, initialValues),
-      readonly: computeReadonly(node, initialValues),
-      // Comportement historique : false/undefined -> champ vide.
-      initialValue:
-        initialValue !== undefined && initialValue !== false ? String(initialValue) : "",
-    },
-  });
 }

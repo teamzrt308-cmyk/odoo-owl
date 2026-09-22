@@ -6,14 +6,15 @@
  * `<FormField index="i" mode="..."/>`) -- même pipeline que le webclient
  * natif Odoo 17 : **Arch XML → <Field> OWL → rendu OWL**.
  *
- * Responsabilités (l'équivalent de renderField + dynamic_field_attrs
- * chez Odoo, mais RÉACTIF par construction) :
+ * Responsabilités (l'équivalent du rendu de champ + attrs dynamiques
+ * chez Odoo, mais RÉACTIF par construction -- les anciens renderField
+ * et dynamic_field_attrs ont été supprimés en itération 24) :
  *  - lit la valeur dans le `record` réactif du renderer (useState) ;
  *  - ré-évalue à chaque rendu invisible/readonly/required (expressions
  *    de l'arch évaluées sur le record -- plus aucune mutation DOM) ;
  *  - choisit le composant interne (registre FIELD_COMPONENTS pour les
  *    types natifs OWL ; les widgets "vanilla" du registre it. 21 sont
- *    injectés tels quels -- couche de transition field_bridge) ;
+ *    injectés tels quels -- couche de transition widget_registry) ;
  *  - publie le changement : record[name] = v + événement `change` qui
  *    bulle vers le conteneur (scheduleDocumentRulesSync du contrôleur).
  *
@@ -34,7 +35,9 @@ import { Many2oneFieldOwl } from "../fields/many2one/many2one_field.js";
 import { Many2manyTagsFieldOwl } from "../fields/many2many_tags/many2many_tags_field.js";
 import { One2manyFieldOwl } from "../fields/one2many/one2many_field.js";
 import { StatusbarFieldOwl } from "../fields/statusbar/statusbar.js";
-import { computeRequired, emitFieldChange } from "../../owl/field_bridge.js";
+import { parseOdooOptions } from "../fields/many2one/many2one_field.js";
+import { computeRequired } from "./field_attrs.js";
+import { emitFieldChange } from "../../owl/field_events.js";
 import { evaluateSimpleCondition } from "../../core/py_js/py_utils.js";
 import { WIDGET_RENDERERS } from "../fields/widget_registry.js";
 
@@ -98,12 +101,13 @@ function buildOne2manyProps(name, info, node, value, parentValues) {
 }
 
 /**
- * Registre des composants internes par TYPE -- props assemblées comme
- * dans les renderXField d'origine, mais depuis le record réactif
- * (readonly/required ré-évalués à chaque rendu, comme les attrs
- * dynamiques d'Odoo).
+ * Registre des composants internes par TYPE -- props assemblées depuis
+ * le record réactif (readonly/required ré-évalués à chaque rendu, comme
+ * les attrs dynamiques d'Odoo). EXPORTÉ : les suites l'utilisent pour
+ * monter les composants exactement comme le fait <FormField> (une seule
+ * source de vérité pour la dérivation type -> composant + props).
  */
-function buildPropsFor(type, name, info, node, value, values) {
+export function buildPropsFor(type, name, info, node, value, values) {
   const readonly = hasStaticAttr(node, "readonly") || evalExpr(attr(node, "readonly"), values);
   const required = !!info.required || (!hasStaticAttr(node, "required") && evalExpr(attr(node, "required"), values));
   const placeholder = attr(node, "placeholder");
@@ -127,11 +131,11 @@ function buildPropsFor(type, name, info, node, value, values) {
     case "monetary":
       return { component: MonetaryFieldOwl, props: { id: `field-${name}`, name, initialValue: value ? Number(value).toFixed(2) : "0.00" } };
     case "many2one": {
-      // can_create : options.no_create / can_create="False" (miroir du
-      // parseur du widget m2o -- repli permissif si options exotiques).
+      // can_create : options.no_create (parseur Python-ish du widget m2o)
+      // ou can_create="False" -- comme le rendu d'origine.
       let allowCreate = true;
       const rawOptions = attr(node, "options");
-      if (rawOptions && /no_create/.test(rawOptions)) allowCreate = !/no_create\s*[:=]\s*(True|1)/i.test(rawOptions);
+      if (rawOptions && parseOdooOptions(rawOptions).no_create) allowCreate = false;
       if (attr(node, "can_create") === "False") allowCreate = false;
       return { component: Many2oneFieldOwl, props: { id: `field-${name}`, name, relation: info.relation, placeholder, required, readonly, canCreate: allowCreate, initialValue: value || false } };
     }

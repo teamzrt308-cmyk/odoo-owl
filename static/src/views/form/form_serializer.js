@@ -39,36 +39,8 @@ export function buildDocumentGraph(container, fieldsInfo, rawRootValues = {}) {
   return { root, lines };
 }
 
-/**
- * Réapplique dans le DOM les champs racine recalculés par runDocumentRules()
- * -- uniquement les champs scalaires simples (les many2one/many2many ne
- * sont jamais des champs "compute" dans ce projet pour l'instant). Ignore
- * le champ actuellement en cours de saisie pour ne pas gêner l'utilisateur.
- * Le mapping des LIGNES one2many est géré par le composant OWL du widget
- * (host.applyLineUpdates, voir fields/one2many/one2many_field.js).
- */
-export function applyDocumentGraphToDom(container, fieldsInfo, graph) {
-  for (const [fieldName, value] of Object.entries(graph.root || {})) {
-    const info = fieldsInfo[fieldName];
-    if (!info || info.type === "many2one" || info.type === "many2many" || info.type === "one2many") continue;
-    const el = container.querySelector(`#field-${fieldName}`);
-    if (!el || el === document.activeElement) continue;
-    setElementValue(el, info, value);
-  }
-}
-
-function setElementValue(el, info, value) {
-  switch (info.type) {
-    case "boolean":
-      el.checked = !!value;
-      return;
-    case "many2one":
-    case "many2many":
-      return; // non géré -- voir commentaire ci-dessus
-    default:
-      el.value = value === false || value === undefined || value === null ? "" : value;
-  }
-}
+// applyDocumentGraphToDom/setElementValue supprimés (itération 24) :
+// la réinjection des règles passe par _formState.applyGraph (réactif).
 
 export function collectFormData(container, fieldsInfo) {
   const data = {};
@@ -85,7 +57,8 @@ export function collectFormData(container, fieldsInfo) {
 
     if (info.type === "one2many") {
       // Le widget one2many est un composant OWL (views/fields/one2many/)
-      // qui publie getLines() sur son hôte DOM (voir owl/field_bridge.js) :
+      // qui publie getLines() sur son hôte DOM [data-o2m-root], via
+      // _attachToHost :
       // les valeurs des lignes viennent de l'état réactif du composant,
       // plus aucun scraping DOM. Les suppressions de lignes initiales y
       // sont déjà matérialisées { id, _deleted: true }.

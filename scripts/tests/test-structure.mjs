@@ -4,7 +4,7 @@
  *  - form_arch_parser (responsabilité parser/renderer)
  *  - webclient/breadcrumb extrait du control panel
  *  - widget statusbar déplacé dans views/fields/statusbar/
- *  - dynamic_field_attrs déplacé dans views/form/
+ *  - attrs dynamiques réactifs via <FormField> (couche impérative supprimée)
  *  - notebook sans dépendance inverse (callback injecté)
  */
 import { JSDOM } from "jsdom";
@@ -64,19 +64,22 @@ ok(cpModule.ControlPanel.components && cpModule.ControlPanel.components.Breadcru
 // couvert de bout en bout par test-controller-owl / test-list-controller-owl.
 
 // --- 4. Widget statusbar OWL (views/fields/statusbar/) ---
-// Composant OWL monté via le field bridge : ordre NATUREL des étapes
+// Composant OWL monté directement : ordre NATUREL des étapes
 // (alignement Odoo 17 -- l'ancien rendu DOM les inversait), filtre
 // statusbar_visible conservé, valeur courante toujours affichée.
-const { renderStatusbarField } = await import(REPO + "/static/src/views/fields/statusbar/statusbar.js");
-const sbNode = new dom.window.DOMParser().parseFromString(
-  '<field name="state" widget="statusbar" statusbar_visible="draft,sent"/>', "text/xml"
-).documentElement;
+const { StatusbarFieldOwl } = await import(REPO + "/static/src/views/fields/statusbar/statusbar.js");
+// Montage direct du composant (itération 24 : plus de span de bridge) --
+// props dérivées de l'arch : selection de fields_get, statusbar_visible.
+async function mountStatusbar(props) {
+  const host = document.createElement("span");
+  document.body.appendChild(host);
+  const app = new owl.App(StatusbarFieldOwl, { props });
+  await app.mount(host);
+  return host;
+}
 const sbInfo = { selection: [["draft", "Brouillon"], ["sent", "Envoyée"], ["done", "Terminée"]] };
-const sbSpan = renderStatusbarField("state", sbInfo, sbNode, "sent");
-ok(sbSpan.classList.contains("o_field_statusbar_mount") && sbSpan._owlReady, "statusbar : span field bridge + _owlReady");
-// Le mount OWL attend la connexion au DOM (waitUntilConnected) : insérer avant l'attente.
-document.body.appendChild(sbSpan);
-await sbSpan._owlReady;
+const sbSpan = await mountStatusbar({ name: "state", selection: sbInfo.selection, visibleStates: ["draft", "sent"], initialValue: "sent" });
+ok(!!sbSpan.querySelector(".o_field_statusbar"), "statusbar : composant OWL monté (<FormField> mode statusbar)");
 const sb = sbSpan.querySelector(".o_field_statusbar");
 ok(!!sb && sb.classList.contains("o_field_widget") && sb.classList.contains("o_readonly_modifier"),
    "statusbar : wrapper o_field_widget o_readonly_modifier o_field_statusbar");
@@ -89,47 +92,44 @@ ok(sbButtons[0].classList.contains("o_first") && sbButtons[sbButtons.length - 1]
 ok(sbButtons.every((b) => b.disabled), "statusbar : étapes désactivées (lecture seule)");
 ok(sb.querySelector('[data-value="sent"]')?.getAttribute("aria-checked") === "true", "statusbar : aria-checked sur l'étape courante");
 // Sans valeur courante : la première étape est active (comportement historique)
-const sbSpan2 = renderStatusbarField("state2", sbInfo, sbNode, undefined);
-document.body.appendChild(sbSpan2);
-await sbSpan2._owlReady;
+const sbSpan2 = await mountStatusbar({ name: "state2", selection: sbInfo.selection, visibleStates: ["draft", "sent"] });
 ok(sbSpan2.querySelector(".o_arrow_button_current")?.textContent === "Brouillon", "statusbar : sans valeur -> 1re étape active");
 
-// --- 5. dynamic_field_attrs (views/form/) ---
-const { applyDynamicAttrs, markReadonly, resetDynamicAttrs, attachLiveBusinessRules } =
-  await import(REPO + "/static/src/views/form/dynamic_field_attrs.js");
-const input = document.createElement("input");
-const fnode = new dom.window.DOMParser().parseFromString(
-  '<field name="name" readonly="state == \'done\'"/>', "text/xml"
-).documentElement;
-applyDynamicAttrs(fnode, input, { state: "draft" });
-ok(!input.readOnly, "attrs dynamiques : readonly=false si condition fausse");
-applyDynamicAttrs(fnode, input, { state: "done" });
-ok(input.readOnly, "attrs dynamiques : readonly appliqué si condition vraie");
-resetDynamicAttrs(input, false);
-ok(!input.readOnly, "resetDynamicAttrs : readonly retiré");
-
-// attachLiveBusinessRules : ré-évaluation live sur un mini formulaire
-const formEl = document.createElement("div");
-formEl.innerHTML = `
-  <div data-field-row="name"><div class="o_field_widget"><input id="field-name"></div></div>
-  <div data-field-row="state"><div class="o_field_widget"><select id="field-state">
-    <option value="draft">draft</option><option value="done">done</option>
-  </select></div></div>`;
-const archLive = `<form><field name="name" readonly="state == 'done'"/><field name="state"/></form>`;
+// --- 5. attrs dynamiques RÉACTIFS (<FormField>, itérations 23-24) ---
+// L'ancienne couche impérative (applyDynamicAttrs/resetDynamicAttrs/
+// attachLiveBusinessRules) est SUPPRIMÉE : readonly/required/invisible
+// sont ré-évalués à chaque rendu du composant de champ sur le record
+// réactif -- vérifié ici via le vrai mountFormRenderer.
+const { mountFormRenderer } = await import(REPO + "/static/src/views/form/form_renderer.js");
+const tick = () => new Promise((r) => setTimeout(r, 5));
+const archLive = `<form><group><field name="name" readonly="state == 'done'"/><field name="state"/></group></form>`;
 const fieldsInfoLive = {
   name: { type: "char", label: "Nom" },
-  state: { type: "selection", label: "État" },
+  state: { type: "selection", label: "État", selection: [["draft", "Brouillon"], ["done", "Terminée"]] },
 };
-const cleanupRules = attachLiveBusinessRules(archLive, formEl, fieldsInfoLive);
-ok(typeof cleanupRules === "function", "attachLiveBusinessRules branché");
-formEl.querySelector("#field-state").value = "done";
-formEl.querySelector("#field-state").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-const nameInput = formEl.querySelector("#field-name");
-ok(nameInput.disabled, "ré-évaluation live : name verrouillé quand state=done");
-formEl.querySelector("#field-state").value = "draft";
-formEl.querySelector("#field-state").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-ok(!nameInput.disabled, "ré-évaluation live : name déverrouillé quand state=draft");
-cleanupRules();
+const dynHost = document.createElement("div");
+document.body.appendChild(dynHost);
+const { el: dynEl, ready: dynReady } = await mountFormRenderer(dynHost, archLive, fieldsInfoLive, { state: "draft" }, null, null);
+await dynReady;
+const nameInput = dynEl.querySelector("#field-name");
+const stateSel = dynEl.querySelector("#field-state");
+ok(nameInput && !nameInput.readOnly, "attrs réactifs : readonly=false si condition fausse");
+stateSel.value = "done";
+stateSel.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+let lockedOk = false;
+for (let i = 0; i < 200 && !lockedOk; i++) {
+  lockedOk = nameInput.readOnly === true;
+  if (!lockedOk) await tick();
+}
+ok(lockedOk, "attrs réactifs : name verrouillé quand state=done (sans re-render)");
+stateSel.value = "draft";
+stateSel.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+let unlockedOk = false;
+for (let i = 0; i < 200 && !unlockedOk; i++) {
+  unlockedOk = nameInput.readOnly === false;
+  if (!unlockedOk) await tick();
+}
+ok(unlockedOk, "attrs réactifs : name déverrouillé quand state=draft");
 
 // --- 6. Notebook : compilé dans le template form (form_arch_parser) ---
 // Le notebook vanilla (core/notebook/) est supprimé : depuis l'itération 4,

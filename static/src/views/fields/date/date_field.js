@@ -7,7 +7,6 @@
  * one2many (callback onChange).
  */
 
-import { renderOwlField, computeReadonly, computeRequired } from "../../../owl/field_bridge.js";
 
 export class DateFieldOwl extends owl.Component {
   static template = owl.xml`
@@ -53,19 +52,4 @@ export class DateFieldOwl extends owl.Component {
     this.state.value = ev.target.value;
     if (this.props.onChange) this.props.onChange(ev.target.value);
   }
-}
-
-export function renderDateField(name, info, node, initialValue, initialValues) {
-  return renderOwlField(DateFieldOwl, {
-    name,
-    fieldTypeClass: "date",
-    props: {
-      id: `field-${name}`,
-      name,
-      placeholder: node ? (node.getAttribute("placeholder") || "") : "",
-      required: computeRequired(node, info, initialValues),
-      readonly: computeReadonly(node, initialValues),
-      initialValue: initialValue ? String(initialValue) : "",
-    },
-  });
 }

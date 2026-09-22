@@ -67,15 +67,28 @@ const alerts = [];
 globalThis.window.alert = (m) => alerts.push(m);
 dom.window.alert = (m) => alerts.push(m);
 
-const { renderMany2oneField } = await import(REPO + "/static/src/views/fields/many2one/many2one_field.js");
-const { renderMany2manyTagsField } = await import(REPO + "/static/src/views/fields/many2many_tags/many2many_tags_field.js");
-const { renderOne2manyField } = await import(REPO + "/static/src/views/fields/one2many/one2many_field.js");
 const { collectFormData } = await import(REPO + "/static/src/views/form/form_serializer.js");
 // Le moteur de règles est initialisé au démarrage de l'app (main.js) ;
 // le test doit le faire explicitement.
 const { initRulesEngine } = await import(REPO + "/static/src/model/rules_engine/rules_engine.js");
 const { allRules } = await import(REPO + "/static/src/model/rules_engine/rules/index.js");
 initRulesEngine(allRules);
+
+// Montage via le DÉRIVATEUR DE PROPS de production (buildPropsFor,
+// partagé avec <FormField>) : les anciens renderXField du field_bridge
+// ont été supprimés (itération 24) -- les tests passent par la même
+// résolution type -> composant + props que la vue form réelle.
+async function mountField(name, info, node, value, values = {}) {
+  const { buildPropsFor } = await import(REPO + "/static/src/views/form/field_component.js");
+  const built = buildPropsFor(info.type, name, info, node, value, values);
+  const host = document.createElement("span");
+  if (info.type === "one2many") host.setAttribute("data-o2m-root", "true"); // span hôte rendu par <FormField>
+  document.body.appendChild(host);
+  const app = new owl.App(built.component, { props: built.props });
+  const component = await app.mount(host);
+  host._owlComponent = component;
+  return host;
+}
 
 async function mount(widgetEl) {
   document.body.appendChild(widgetEl);
@@ -92,9 +105,9 @@ async function mount(widgetEl) {
   const node = new dom.window.DOMParser().parseFromString('<field name="partner_id" placeholder="Choisir..."/>', "text/xml").documentElement;
 
   let changed = null;
-  const host = renderMany2oneField("partner_id", info, node, 1, {});
-  host._testOnChange = (v) => (changed = v);
+  const host = await mountField("partner_id", info, node, 1, {});
   const comp = await mount(host);
+  comp.props.onChange = (v) => (changed = v);
 
   const input = host.querySelector("input[type=text]");
   const hidden = host.querySelector('input[type=hidden]');
@@ -132,7 +145,7 @@ async function mount(widgetEl) {
 
   // no_create respecté
   const nodeNC = new dom.window.DOMParser().parseFromString('<field name="partner_id" options="{\'no_create\': True}"/>', "text/xml").documentElement;
-  const hostNC = renderMany2oneField("partner2", info, nodeNC, false, {});
+  const hostNC = await mountField("partner2", info, nodeNC, false, {});
   await mount(hostNC);
   const inputNC = hostNC.querySelector("input[type=text]");
   inputNC.value = "Xy";
@@ -145,7 +158,7 @@ async function mount(widgetEl) {
 {
   const info = { type: "many2many", relation: "res.partner", label: "Tags" };
   let changed = null;
-  const host = renderMany2manyTagsField("tag_ids", info, null, [1], {});
+  const host = await mountField("tag_ids", info, null, [1], {});
   const comp = await mount(host);
   comp.props.onChange = (v) => (changed = v);
 
@@ -199,7 +212,7 @@ async function mount(widgetEl) {
     { id: 11, product_id: [5, "Desk"], product_uom_qty: 2, price_unit: 30, price_subtotal: 60, price_total: 60, purchase_line_id: [99, "POL/1"] },
   ];
 
-  const host = renderOne2manyField("order_line", info, archNode, initialRows, {});
+  const host = await mountField("order_line", info, archNode, initialRows, {});
   document.body.appendChild(host);
   for (let i = 0; i < 150; i++) { if (host._owlComponent) break; await tick(); }
   ok(!!host._owlComponent && host._owlOne2many === true, "o2m : composant OWL monté, API publiées sur l'hôte");
@@ -258,7 +271,7 @@ async function mount(widgetEl) {
 
   // adjustLineFields : deltas du ledger
   host.adjustLineFields(undefined, {}); // no-op sans id — ne doit pas planter
-  const host2 = renderOne2manyField("order_line2", info, archNode, initialRows, {});
+  const host2 = await mountField("order_line2", info, archNode, initialRows, {});
   document.body.appendChild(host2);
   for (let i = 0; i < 150; i++) { if (host2._owlComponent) break; await tick(); }
   host2.adjustLineFields(11, { qty_received: 3 });
@@ -281,7 +294,7 @@ async function mount(widgetEl) {
         <field name="price_unit" optional="hide"/>
       </list>
     </field>`, "text/xml").documentElement;
-  const hostOpt = renderOne2manyField("ol3", { ...info, sub_fields: subFields }, archOpt, [], {});
+  const hostOpt = await mountField("ol3", { ...info, sub_fields: subFields }, archOpt, [], {});
   document.body.appendChild(hostOpt);
   await mount(hostOpt);
   ok(!!hostOpt.querySelector(".o_optional_columns_dropdown"), "o2m : engrenage colonnes optionnelles rendu");

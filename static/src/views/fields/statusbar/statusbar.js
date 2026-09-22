@@ -9,8 +9,8 @@
  * les widgets de champ du moteur sont désormais rendus par OWL.
  *
  * Contractualisme conservé :
- *  - renderStatusbarField(name, info, node, currentValue) -> HTMLElement
- *    (span du field_bridge, mount OWL asynchrone dedans) ;
+ *  - monté par <FormField> (mode "statusbar", itération 23 -- l'ancien
+ *    renderStatusbarField a été supprimé en itération 24) ;
  *  - DOM produit : .o_field_widget.o_readonly_modifier.o_field_statusbar
  *    > .o_statusbar_status > .o_arrow_button (sélecteurs de test et
  *    contrat visuel inchangés).
@@ -22,7 +22,6 @@
  * statusbar_visible), plus sur la liste complète.
  */
 
-import { renderOwlField } from "../../../owl/field_bridge.js";
 
 export class StatusbarFieldOwl extends owl.Component {
   static props = {
@@ -99,30 +98,4 @@ export class StatusbarFieldOwl extends owl.Component {
       (step.isActive ? " o_arrow_button_current" : "")
     );
   }
-}
-
-/**
- * Signature alignée sur celle des autres widgets de champ du moteur hors
- * ligne : (name, info, node, currentValue) -> HTMLElement (span du field
- * bridge). info.selection est requis (vérifié en amont par
- * form_arch_parser avant de créer l'emplacement).
- */
-export function renderStatusbarField(name, info, node, currentValue) {
-  if (!info || !info.selection) return null;
-
-  const visibleAttr = node ? node.getAttribute("statusbar_visible") : null;
-  const visibleStates = visibleAttr
-    ? visibleAttr.split(",").map((s) => s.trim())
-    : null;
-
-  return renderOwlField(StatusbarFieldOwl, {
-    name,
-    fieldTypeClass: "statusbar",
-    props: {
-      name,
-      selection: info.selection,
-      visibleStates,
-      initialValue: currentValue,
-    },
-  });
 }

@@ -5,7 +5,7 @@
  * (mailto:, tel:, http) qui ouvre le gestionnaire de l'appareil -- le
  * href est construit localement, aucun serveur.
  */
-import { computeReadonly } from "../../../owl/field_bridge.js";
+import { computeReadonly } from "../../form/field_attrs.js";
 
 const MODES = {
   email: { type: "email", icon: "fa-envelope", title: "Envoyer un e-mail", build: (v) => `mailto:${v}` },

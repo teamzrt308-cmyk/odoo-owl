@@ -7,7 +7,7 @@
  * réactif, et les recalculs métier passent par rules_engine
  * (runLineRules / checkOndeleteGuard) comme les compute Odoo.
  *
- * Contrat impératif exposé sur l'hôte DOM (via field_bridge ->
+ * Contrat impératif exposé sur l'hôte DOM ([data-o2m-root], via
  * _attachToHost), consommé par form_serializer.js / form_controller.js :
  *   - host._owlOne2many            : marqueur de l'implémentation OWL ;
  *   - host.getLines()              : valeurs canoniques des lignes,
@@ -24,7 +24,7 @@
  * (product_catalog.js), inséré dans un host dédié du template OWL.
  */
 
-import { renderOwlField, emitFieldChange } from "../../../owl/field_bridge.js";
+import { emitFieldChange } from "../../../owl/field_events.js";
 import { evaluateSimpleCondition } from "../../../core/py_js/py_utils.js";
 import { runLineRules, checkOndeleteGuard } from "../../../model/rules_engine/rules_engine.js";
 import { getApiKey, CONFIG } from "../../../core/browser/session.js";
@@ -253,8 +253,8 @@ export class One2manyFieldOwl extends owl.Component {
     this.overlayHostRef = owl.useRef("overlayHost");
     // Pipeline <FormField> : publication des APIs du one2many sur
     // l'hôte [data-o2m-root] rendu par le composant Field (contrat
-    // sérialiseur inchangé -- le bridge faisait pareil via
-    // renderOwlField). Les enfants montent AVANT le parent : au
+    // sérialiseur inchangé -- le span hôte est rendu par <FormField>).
+    // Les enfants montent AVANT le parent : au
     // onMounted de celui-ci, closest() trouve toujours l'hôte.
     owl.onMounted(() => {
       const host = this.rootRef.el && this.rootRef.el.closest('[data-o2m-root="true"]');
@@ -306,8 +306,8 @@ export class One2manyFieldOwl extends owl.Component {
   }
 
   /**
-   * Publie les API impératives sur l'hôte DOM (conteneur créé par
-   * field_bridge) -- consommées par form_serializer/form_controller,
+   * Publie les API impératives sur l'hôte DOM (span [data-o2m-root]
+   * rendu par <FormField>) -- consommées par form_serializer/form_controller,
    * qui n'ont plus à scraper le DOM des lignes.
    */
   _attachToHost(host) {
@@ -320,10 +320,11 @@ export class One2manyFieldOwl extends owl.Component {
   }
 
   /**
-   * Contrat field_bridge : TOUTE mutation de lignes (saisie cellule,
-   * ajout, suppression, ajustement ledger) diffuse `change` sur l'hôte
-   * -- les bulles remontent au conteneur du formulaire et déclenchent la
-   * ré-évaluation des attrs dynamiques + les règles RACINE (ex:
+   * Contrat événementiel : TOUTE mutation de lignes UTILISATEUR
+   * (saisie cellule, ajout, suppression -- JAMAIS les ré-écritures
+   * programmatiques applyLineUpdates/adjustLineFields, sinon boucle de
+   * sync) diffuse `change` sur l'hôte -- les bulles remontent au
+   * conteneur du formulaire et déclenchent les règles RACINE (ex:
    * amount_total = Σ lignes), comme un input natif.
    */
   _notifyHostChanged() {
@@ -494,8 +495,8 @@ export class One2manyFieldOwl extends owl.Component {
    */
   applyLineUpdates(rows) {
     // PAS de _notifyHostChanged ici : cette méthode est appelée PAR la
-    // passe de règles (applyDocumentGraphToDom) pour re-rendre le résultat
-    // -- notifier re-déclencherait la synchro en boucle.
+    // passe de règles (_formState.applyGraph puis APIs ci-dessous) pour
+    // re-rendre le résultat -- notifier re-déclencherait la synchro en boucle.
 
     
     const lineItems = this.lineItems;
@@ -817,94 +818,3 @@ function getControlLabels(treeNode) {
 
   return labels;
 }
-
-export function renderOne2manyField(name, info, node, initialValue, parentValues) {
-  // Modèle des lignes (ex: "purchase.order.line") -- fourni par fields_get().
-  const lineModel = info.relation || null;
-  const subFields = info.sub_fields || {};
-
-  // Colonnes depuis l'arch (<tree>/<list> enfant), avec visibilité
-  // évaluée une fois au rendu (column_invisible/invisible + parentValues),
-  // comme l'ancien moteur.
-  let columns = [];
-  let controlLabels = { default: "Ajouter une ligne", section: null, note: null, catalog: null };
-
-  if (node) {
-    const treeNode = Array.from(node.children).find((c) => c.tagName === "tree" || c.tagName === "list");
-    if (treeNode) {
-      controlLabels = getControlLabels(treeNode);
-      for (const fieldNode of Array.from(treeNode.children).filter((c) => c.tagName === "field")) {
-        const fname = fieldNode.getAttribute("name");
-        if (!fname || !subFields[fname]) continue;
-
-        const widget = fieldNode.getAttribute("widget");
-        if (widget === "handle") continue;
-
-        const columnInvisible = fieldNode.getAttribute("column_invisible");
-        const invisible = fieldNode.getAttribute("invisible");
-        const optional = fieldNode.getAttribute("optional"); // "show" | "hide" | null
-
-        if (columnInvisible === "1" || columnInvisible === "True") continue;
-        if (columnInvisible && evaluateSimpleCondition(columnInvisible, {}, parentValues) === true) continue;
-
-        if (invisible === "1" || invisible === "True") continue;
-        if (invisible && evaluateSimpleCondition(invisible, {}, parentValues) === true) continue;
-
-        // optional="hide" ne supprime PAS la colonne : masquée par défaut,
-        // ré-activable via l'engrenage (état réactif du composant OWL).
-        columns.push({
-          field: fname,
-          label: fieldNode.getAttribute("string") || subFields[fname].label,
-          type: subFields[fname].type,
-          relation: subFields[fname].relation || null,
-          selection: subFields[fname].selection || [],
-          optional: optional || null,
-          visible: optional !== "hide",
-        });
-      }
-    }
-  }
-
-  if (columns.length === 0) {
-    const priorityFields = ["product_template_id", "product_id", "name", "product_uom_qty", "price_unit", "product_uom"];
-    columns = priorityFields
-      .filter((f) => subFields[f])
-      .map((f) => ({
-        field: f,
-        label: subFields[f].label,
-        type: subFields[f].type,
-        relation: subFields[f].relation || null,
-        selection: subFields[f].selection || [],
-        optional: null,
-        visible: true,
-      }));
-
-    if (columns.length === 0) {
-      columns = Object.keys(subFields).slice(0, 4).map((f) => ({
-        field: f,
-        label: subFields[f].label,
-        type: subFields[f].type,
-        relation: subFields[f].relation || null,
-        selection: subFields[f].selection || [],
-        optional: null,
-        visible: true,
-      }));
-    }
-  }
-
-  return renderOwlField(One2manyFieldOwl, {
-    name,
-    fieldTypeClass: "one2many",
-    attributes: { "data-o2m-root": "true" },
-    props: {
-      name,
-      columns,
-      labels: controlLabels,
-      subFields,
-      lineModel,
-      initialValue: Array.isArray(initialValue) ? initialValue : [],
-      parentValues: parentValues || {},
-    },
-  });
-}
-

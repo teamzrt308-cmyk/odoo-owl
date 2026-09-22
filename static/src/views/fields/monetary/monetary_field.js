@@ -7,7 +7,6 @@
  * l'affichage à chaque re-render (attribut value, input non "dirty").
  */
 
-import { renderOwlField } from "../../../owl/field_bridge.js";
 
 export class MonetaryFieldOwl extends owl.Component {
   static template = owl.xml`
@@ -25,16 +24,4 @@ export class MonetaryFieldOwl extends owl.Component {
     name: String,
     initialValue: { type: [String, Number], optional: true }, // one2many : valeurs canoniques numériques
   };
-}
-
-export function renderMonetaryField(name, info, node, initialValue, initialValues) {
-  return renderOwlField(MonetaryFieldOwl, {
-    name,
-    fieldTypeClass: "monetary",
-    props: {
-      id: `field-${name}`,
-      name,
-      initialValue: initialValue ? Number(initialValue).toFixed(2) : "0.00",
-    },
-  });
 }

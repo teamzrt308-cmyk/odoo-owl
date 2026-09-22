@@ -231,6 +231,37 @@ l'ORM d'Odoo -- cette itération comble les trois trous restants :
 - suites : 18/18 vertes ; audit manifest réel : MONTAGE 168/168,
   PARSE list/kanban/form 56×3.
 
+### Purge de la couche de transition (itération 24)
+- **`owl/field_bridge.js` SUPPRIMÉ** : `renderOwlField` (mount impératif
+  dans un span) n'a plus de consommateur depuis le pipeline `<FormField>` ;
+  `emitFieldChange` vit dans `owl/field_events.js`, `computeReadonly`/
+  `computeRequired` dans `views/form/field_attrs.js` (fonctions pures,
+  sans DOM) ;
+- **`views/form/dynamic_field_attrs.js` SUPPRIMÉ** : `applyDynamicAttrs`
+  (mutation DOM) et `attachLiveBusinessRules` (ré-évaluation live par
+  écouteurs) remplacés par la réactivité de `<FormField>` -- le
+  contrôleur n'a plus aucun fallback impératif (`_formState.applyGraph`
+  est le seul chemin de réinjection) ;
+- **`views/fields/field.js` SUPPRIMÉ** (dispatch `renderField` +
+  13 `renderXField`) : `canRenderField` devient une constante locale de
+  `form_arch_parser` (`RENDERABLE_FIELD_TYPES`) ; les 13 modules de
+  champ ne gardent que leurs classes OWL (`parseOdooOptions` exporté par
+  m2o, partagé avec `buildPropsFor`) ;
+- **`form_serializer`** : `applyDocumentGraphToDom`/`setElementValue`
+  supprimés (réinjection réactive uniquement) ;
+- **`buildPropsFor` EXPORTÉ** (field_component) : dérivation unique
+  type -> composant + props, partagée entre `<FormField>` et les suites
+  (test-fields-owl / test-relational-owl / test-structure migrés : ils
+  montent les MÊMES composants que la vue réelle, plus de doublon de
+  dérivation dans les tests) ;
+- bundle : 9218 -> 8809 lignes (~400 lignes mortes purgées) ; 18/18
+  vertes ; audit manifest réel : MONTAGE 168/168, PARSE 56×3 ;
+- **transition RESTANTE** (à convertir quand list/kanban auront leurs
+  composants OWL par cellule/carte) : `widget_registry` (widgets
+  vanilla, injectés en form par `mountVanilla`, rendus en cellules list
+  et cartes kanban) + APIs impératives du one2many (contrat sérialiseur
+  assumé).
+
 ### Contrôleurs (itérations 5-6, 11)
 - `FormController`, `ListController`, `KanbanController` (**dédié** depuis l'itération 11, descripteur `{ Controller }`) : **composants OWL**, zones en template, logique offline intacte (sync, règles document, ledger, actions objet, sauvegarde, pagination, recherche, dashboard), `onMounted`/`onWillDestroy`.
 - `view.js` monte `descriptor.Controller` (props params + env), comme le webclient natif.
@@ -409,9 +440,13 @@ Correctifs révélés par l'audit (`scripts/tests/audit-manifest.mjs
   `<FormField>` (views/form/field_component.js) directement dans le
   template compilé, et le record réactif du renderer (useState) est la
   source de vérité -- plus de remplissage impératif data-form-slot.
-  Migration PROGRESSIVE : le field_bridge (it. 22) reste la couche de
-  transition pour les widgets vanilla (widget_registry) et le one2many
-  (APIs impératives sur l'hôte `[data-o2m-root]`). CONTRATS INTANGIBLES
+  Migration PROGRESSIVE : depuis l'itération 24, le field_bridge est
+  SUPPRIMÉ (héritiers purs : `owl/field_events.js`,
+  `views/form/field_attrs.js`) ; la couche de transition restante est
+  le registre vanilla (widget_registry, injecté en form par
+  `mountVanilla`, rendu en cellules list / cartes kanban) et les APIs
+  impératives du one2many (contrat sérialiseur assumé sur
+  `[data-o2m-root]`). CONTRATS INTANGIBLES
   à chaque étape : valeur (`#field-<name>` / `getLines()`), relations
   (m2o hidden `_id`, m2m JSON, o2m composant + sub_fields), invisible/
   readonly/required désormais RÉACTIFS par construction (ré-évalués à

@@ -6,7 +6,8 @@
  * réseau) -- valeur base64 synchronisée dans l'input caché.
  */
 import { hiddenValueInput } from "../selection_utils.js";
-import { computeReadonly, emitFieldChange } from "../../../owl/field_bridge.js";
+import { computeReadonly } from "../../form/field_attrs.js";
+import { emitFieldChange } from "../../../owl/field_events.js";
 
 const PLACEHOLDER = "assets/default-app.png";
 

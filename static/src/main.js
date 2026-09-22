@@ -10,9 +10,10 @@ import "./views/view.js";
 import "./webclient/home_menu/home_menu.js";
 
 
-// OWL — les widgets de champ sont tous rendus par OWL : les types simples
-// via owl/field_bridge.js (char, text, integer, float, boolean, selection,
-// date, datetime, monetary), les relationnels many2one/many2many_tags et
+// OWL — les widgets de champ sont tous rendus par OWL : la vue form émet
+// des composants <FormField> par type (char, text, integer, float,
+// boolean, selection, date, datetime, monetary), les relationnels
+// many2one/many2many_tags et
 // le tableau one2many (sous-composants OWL par cellule, état réactif des
 // lignes) ; les vues kanban (kanban_arch_parser) et form
 // (form_arch_parser::buildFormTemplate) sont des composants OWL dont le
