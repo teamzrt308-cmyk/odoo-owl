@@ -33,6 +33,32 @@ class SyncController(http.Controller, OfflineSyncMixin):
         SyncQueue = env["sync.queue"]
         results = []
 
+        # Mesure 7 : plafonds anti-DoS (surchargables en paramètres
+        # système). Les actions au-delà du plafond ne sont PAS rejetées :
+        # le serveur répond une erreur transitoire, la PWA les garde en
+        # file et les repoussera au prochain push.
+        def _cap(name, default):
+            try:
+                return int(request.env["ir.config_parameter"].sudo()
+                           .get_param(name, str(default)))
+            except (TypeError, ValueError):
+                return default
+
+        max_actions = _cap("offline_sync.push_max_actions", 100)
+        max_payload = _cap("offline_sync.push_max_payload_bytes", 1000000)
+        deferred = []
+        if len(actions) > max_actions:
+            deferred = actions[max_actions:]
+            actions = actions[:max_actions]
+            _logger.warning(
+                "offline_sync push: %s action(s) au-delà du plafond "
+                "(%s) -- renvoyées en erreur transitoire uid=%s",
+                len(deferred), max_actions, user.id,
+            )
+        _logger.info(
+            "offline_sync push: %s action(s) uid=%s", len(actions), user.id
+        )
+
         # Crée les entrées de file (ou récupère celles déjà connues, pour
         # ne jamais rejouer deux fois la même action côté serveur).
         pending_entries = []
@@ -47,21 +73,48 @@ class SyncController(http.Controller, OfflineSyncMixin):
                 })
                 continue
 
+            payload_raw = action.get("payload") or "{}"
+            if len(payload_raw.encode("utf-8")) > max_payload:
+                _logger.warning(
+                    "offline_sync push: payload trop volumineux (%s octets) "
+                    "uuid=%s -- rejeté", len(payload_raw), local_uuid,
+                )
+                results.append({
+                    "local_uuid": local_uuid,
+                    "status": "error",
+                    "error": "Payload trop volumineux",
+                })
+                continue
+
             try:
-                decoded_payload = json.loads(action.get("payload") or "{}")
+                decoded_payload = json.loads(payload_raw)
             except Exception:
                 decoded_payload = {}
 
-            queue_entry = SyncQueue.create({
-                "local_uuid": local_uuid,
-                "model_name": action.get("model_name"),
-                "operation": action.get("operation"),
-                "payload": action.get("payload"),
-                "created_at": action.get("created_at"),
-                "reference_write_date": action.get("reference_write_date"),
-                "reference_values": action.get("reference_values"),
-                "status": "pending",
-            })
+            # Mesure 7 : la création de file est DANS le try (une
+            # exception ici laissait l'action sans statut cohérent).
+            try:
+                queue_entry = SyncQueue.create({
+                    "local_uuid": local_uuid,
+                    "model_name": action.get("model_name"),
+                    "operation": action.get("operation"),
+                    "payload": action.get("payload"),
+                    "created_at": action.get("created_at"),
+                    "reference_write_date": action.get("reference_write_date"),
+                    "reference_values": action.get("reference_values"),
+                    "status": "pending",
+                })
+            except Exception:
+                _logger.exception(
+                    "offline_sync push: création de file impossible uuid=%s",
+                    local_uuid,
+                )
+                results.append({
+                    "local_uuid": local_uuid,
+                    "status": "error",
+                    "error": "Rejet par le serveur",
+                })
+                continue
             pending_entries.append((queue_entry, decoded_payload))
 
         # Table uuid local -> ID Odoo réel, pré-remplie avec les créations
@@ -95,7 +148,25 @@ class SyncController(http.Controller, OfflineSyncMixin):
                     "payload": json.dumps(resolved_payload),
                     "status": "in_progress",
                 })
-                result = queue_entry.apply_action()
+                # Mesure 7 : une action « empoisonnée » ne doit plus
+                # faire échouer TOUT le push (500) ni bloquer la file.
+                try:
+                    result = queue_entry.apply_action()
+                except Exception:
+                    _logger.exception(
+                        "offline_sync push: action en échec uuid=%s "
+                        "model=%s", queue_entry.local_uuid,
+                        queue_entry.model_name,
+                    )
+                    queue_entry.write({
+                        "status": "error",
+                        "error_message": "Erreur serveur (voir logs Odoo)",
+                    })
+                    result = {
+                        "local_uuid": queue_entry.local_uuid,
+                        "status": "error",
+                        "error": "Erreur serveur",
+                    }
                 results.append(result)
                 if result.get("status") == "sent":
                     uuid_to_id[queue_entry.local_uuid] = queue_entry.odoo_record_id
@@ -118,6 +189,15 @@ class SyncController(http.Controller, OfflineSyncMixin):
                 "local_uuid": queue_entry.local_uuid,
                 "status": "error",
                 "error": "Dépendance non résolue.",
+            })
+
+        # Actions au-delà du plafond : erreur transitoire -- la PWA les
+        # CONSERVE en file (statut error) et les repoussera.
+        for action in deferred:
+            results.append({
+                "local_uuid": action.get("local_uuid"),
+                "status": "error",
+                "error": "Plafond de push atteint, réessayez plus tard",
             })
 
         return self._cors_response(json.dumps({"results": results}))

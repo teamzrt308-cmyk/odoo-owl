@@ -1,6 +1,6 @@
 {
     "name": "Offline Sync",
-    "version": "17.0.1.0.0",
+    "version": "17.0.1.1.0",
     "summary": "Synchronisation des données saisies hors ligne (PWA) vers Odoo",
     "category": "Technical",
     "author": "VLR.34",

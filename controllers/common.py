@@ -107,17 +107,34 @@ class OfflineSyncMixin:
         )
         if not param:
             return []
-        return [o.strip() for o in param.split(",") if o.strip()]
+        # Normalisation : pas d'espaces superflus, pas de "/" final.
+        origins = []
+        for o in param.split(","):
+            o = o.strip().rstrip("/")
+            if o:
+                origins.append(o)
+        return origins
 
-    def _cors_response(self, body="", status=200):
+    def _cors_response(self, body="", status=200, extra_headers=None):
         origin = request.httprequest.headers.get("Origin", "")
         allowed_origins = self._get_allowed_origins()
+        # Fail-safe : une config "*" est refusée QUOI QU'il arrive (une
+        # API porteur de clé ne doit jamais être appelable par n'importe
+        # quelle page web).
+        if "*" in allowed_origins:
+            _logger.error(
+                "offline_sync.allowed_origins contient '*' : REFUSÉ "
+                "(fail-safe). Listez explicitement les origines PWA."
+            )
+            allowed_origins = []
 
         response = request.make_response(
             body,
             headers=[("Content-Type", "application/json")] if body else [],
             status=status,
         )
+        for name, value in (extra_headers or []):
+            response.headers[name] = value
 
         if not allowed_origins:
             _logger.error(
@@ -147,10 +164,8 @@ class OfflineSyncMixin:
         if not api_key:
             return None
 
-        user = request.env["res.users"].sudo().search(
-            [("offline_sync_api_key", "=", api_key)], limit=1
-        )
-        return user or None
+        # Mesures 3+4 : validation par HMAC + TTL (cf. res_users.py).
+        return request.env["res.users"].sudo()._authenticate_offline_sync_key(api_key)
 
     def _json_safe(self, value):
         """Recursively converts non-serializable types (date, datetime) to JSON strings."""

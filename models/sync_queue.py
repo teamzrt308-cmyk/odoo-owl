@@ -272,7 +272,9 @@ class SyncQueue(models.Model):
 
         requires_manual_action = False
         pending_action_json = None
-        if isinstance(result, dict) and result.get("type") != "":
+        # Mesure 8b (audit) : un dict SANS clé "type" n'est pas une
+        # manual_action (l'ancien test `!= ""` classait à tort).
+        if isinstance(result, dict) and bool(result.get("type")):
             requires_manual_action = True
             pending_action_json = json.dumps(self._json_safe_result(result))
 
@@ -309,18 +311,28 @@ class SyncQueue(models.Model):
             finfo = fields_info.get(fname)
             if not finfo:
                 continue
+            ftype = finfo["type"]
 
-            if value is None:
+            # one2many / many2many : seule une LISTE est écrivable ; une
+            # valeur scalaire (None/""/False) est ignorée.
+            if ftype in ("one2many", "many2many"):
+                if isinstance(value, list):
+                    if ftype == "one2many":
+                        prepared[fname] = self._build_one2many_commands(
+                            value, finfo["relation"]
+                        )
+                    else:
+                        prepared[fname] = build_many2many_commands(value)
                 continue
 
-            if (value is False or value == "") and finfo["type"] not in WRITABLE_FALSY_TYPES:
+            # Mesure 8a (audit) : None / False / "" = EFFACEMENT explicite
+            # -> on écrit False au lieu d'ignorer la valeur (vider une
+            # date ou un texte hors ligne était silencieusement perdu).
+            if value is None or value is False or value == "":
+                prepared[fname] = False
                 continue
 
-            if finfo["type"] == "one2many" and isinstance(value, list):
-                prepared[fname] = self._build_one2many_commands(value, finfo["relation"])
-            elif finfo["type"] == "many2many" and isinstance(value, list):
-                prepared[fname] = build_many2many_commands(value)
-            elif finfo["type"] == "datetime" and value:
+            if ftype == "datetime":
                 prepared[fname] = normalize_datetime(value, self.env.user.tz)
             else:
                 prepared[fname] = value

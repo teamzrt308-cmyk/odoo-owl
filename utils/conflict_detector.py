@@ -211,15 +211,9 @@ def _detect_line_conflicts(record, field_name, local_lines, reference_lines, com
 
 
 def _extract_id(v):
-    if isinstance(v, (list, tuple)) and len(v) >= 1:
-        return v[0]
-    return v
-
-
-def _extract_id(v):
     """Normalise un élément de liste many2many : accepte soit un id brut,
     soit une paire [id, label] (format read_record() pour les many2many),
-    et retourne toujours l'id seul."""
+    et retourne toujours l'id seul."""  # (mesure 8d : doublon purgé)
     if isinstance(v, (list, tuple)) and len(v) >= 1:
         return v[0]
     return v

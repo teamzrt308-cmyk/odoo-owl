@@ -32,7 +32,14 @@ class DatabaseController(http.Controller, OfflineSyncMixin):
         env = request.env(user=user.id)
         Model = env[model]
 
-        records = Model.search([], limit=5000)
+        # Mesure 8c (audit) : filtre multi-sociétés + tri déterministe.
+        # Plafond 5000 documenté : ces enregistrements servent de
+        # références m2o à la PWA, pas de liste de travail.
+        domain = []
+        if "company_id" in Model._fields:
+            domain = ["|", ("company_id", "=", False),
+                      ("company_id", "in", user.company_ids.ids)]
+        records = Model.search(domain, order="id", limit=5000)
 
         if model == "res.currency":
             result = [
