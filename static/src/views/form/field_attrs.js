@@ -4,8 +4,8 @@
  * Évaluation des attributs dynamiques de l'arch (readonly/required),
  * héritée du field_bridge (itération 24). PURE : retourne des booléens,
  * ne mute JAMAIS le DOM -- les résultats sont consommés au rendu par
- * <FormField> (field_component.js) et par les widgets vanilla du
- * registre (widget_registry.js). Côté pipeline natif, ces valeurs sont
+ * <FormField> (field_component.js) et par les widgets explicites
+ * (registre WIDGET_COMPONENTS, itération 25). Côté pipeline natif, ces valeurs sont
  * ré-évaluées à CHAQUE rendu sur le record réactif (l'équivalent des
  * attrs dynamiques du webclient, sans couche impérative).
  *

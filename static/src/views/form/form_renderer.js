@@ -18,8 +18,9 @@
  *
  * Spécificité hors ligne conservée : contrat DOM du sérialiseur
  * (#field-<name>, hidden inputs m2o/m2m, data-one2many + APIs
- * impératives du composant one2many) et widgets "vanilla" du registre
- * (couche de transition widget_registry, partagée avec list/kanban).
+ * impératives du composant one2many) ; les widgets explicites sont des
+ * composants OWL (registre WIDGET_COMPONENTS, partagé avec les cellules
+ * de liste -- itération 25).
  */
 
 import { mountOwlApp } from "../../owl/app.js";

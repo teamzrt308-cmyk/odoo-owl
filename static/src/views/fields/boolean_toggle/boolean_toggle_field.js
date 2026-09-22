@@ -1,30 +1,41 @@
 /**
  * views/fields/boolean_toggle/boolean_toggle_field.js
- * ===================================================
- * Widget "boolean_toggle" : interrupteur (form-check-switch Bootstrap 5)
- * -- le CHECKBOX lui-même porte id="field-<name>" : le sérialiseur lit
- * el.checked comme pour le widget boolean natif.
+ * ==================================================
+ * Widget "boolean_toggle" -- COMPOSANT OWL (itération 25) : interrupteur
+ * (form-check-switch Bootstrap 5). Le CHECKBOX lui-même porte
+ * id="field-<name>" : le sérialiseur lit el.checked comme pour le
+ * widget boolean natif.
+ *
+ * Variante listDisplay : cellule de liste en lecture seule (même markup
+ * que l'ancien rendu inline : icône fa-check-circle / fa-times-circle).
  */
-import { computeReadonly } from "../../form/field_attrs.js";
-import { emitFieldChange } from "../../../owl/field_events.js";
+export class BooleanToggleFieldOwl extends owl.Component {
+  static template = owl.xml`
+    <span t-if="props.listDisplay"
+          t-att-class="'fa ' + (props.value ? 'fa-check-circle text-success' : 'fa-times-circle text-muted')"
+          t-att-title="props.title || ''"/>
+    <div t-else="" class="form-check form-switch o_boolean_toggle d-inline-block m-0">
+      <input type="checkbox"
+             class="form-check-input"
+             t-att-id="'field-' + props.name"
+             t-att-data-field="props.name"
+             t-att-checked="!!props.value"
+             t-att-readonly="props.readonly"
+             t-att-disabled="props.readonly"
+             t-on-change="onToggle"/>
+    </div>
+  `;
 
-export function renderBooleanToggleField(name, info, node, initialValue, initialValues) {
-  const wrap = document.createElement("div");
-  wrap.className = "form-check form-switch o_boolean_toggle d-inline-block m-0";
-  const input = document.createElement("input");
-  input.type = "checkbox";
-  input.className = "form-check-input";
-  input.id = `field-${name}`;
-  input.setAttribute("data-field", name);
-  input.checked = !!initialValue;
-  if (computeReadonly(node, initialValues)) {
-    input.setAttribute("readonly", "readonly");
-    input.disabled = true;
+  static props = {
+    name: String,
+    value: { optional: true },
+    readonly: { type: Boolean, optional: true },
+    listDisplay: { type: Boolean, optional: true },
+    title: { type: String, optional: true },
+    onChange: { type: Function, optional: true },
+  };
+
+  onToggle(ev) {
+    if (this.props.onChange) this.props.onChange(ev.target.checked);
   }
-  input.addEventListener("change", () => {
-    // reflet "icône" éventuel à côté (liste : non applicable)
-    emitFieldChange(input);
-  });
-  wrap.appendChild(input);
-  return wrap;
 }

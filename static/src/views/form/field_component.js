@@ -13,8 +13,9 @@
  *  - ré-évalue à chaque rendu invisible/readonly/required (expressions
  *    de l'arch évaluées sur le record -- plus aucune mutation DOM) ;
  *  - choisit le composant interne (registre FIELD_COMPONENTS pour les
- *    types natifs OWL ; les widgets "vanilla" du registre it. 21 sont
- *    injectés tels quels -- couche de transition widget_registry) ;
+ *    types natifs OWL ; les widgets explicites (widget="...") sont
+ *    résolus dans le registre WIDGET_COMPONENTS -- composants OWL
+ *    depuis l'itération 25, plus aucune injection vanilla) ;
  *  - publie le changement : record[name] = v + événement `change` qui
  *    bulle vers le conteneur (scheduleDocumentRulesSync du contrôleur).
  *
@@ -35,11 +36,18 @@ import { Many2oneFieldOwl } from "../fields/many2one/many2one_field.js";
 import { Many2manyTagsFieldOwl } from "../fields/many2many_tags/many2many_tags_field.js";
 import { One2manyFieldOwl } from "../fields/one2many/one2many_field.js";
 import { StatusbarFieldOwl } from "../fields/statusbar/statusbar.js";
+import { PriorityFieldOwl } from "../fields/priority/priority_field.js";
+import { BadgeFieldOwl } from "../fields/badge/badge_field.js";
+import { BooleanToggleFieldOwl } from "../fields/boolean_toggle/boolean_toggle_field.js";
+import { RadioFieldOwl } from "../fields/radio/radio_field.js";
+import { ImageFieldOwl } from "../fields/image/image_field.js";
+import { LinkFieldOwl } from "../fields/url/url_field.js";
+import { StatinfoFieldOwl } from "../fields/statinfo/statinfo_field.js";
 import { parseOdooOptions } from "../fields/many2one/many2one_field.js";
-import { computeRequired } from "./field_attrs.js";
+import { selectionEntries } from "../fields/selection_utils.js";
+import { computeRequired, computeReadonly } from "./field_attrs.js";
 import { emitFieldChange } from "../../owl/field_events.js";
 import { evaluateSimpleCondition } from "../../core/py_js/py_utils.js";
-import { WIDGET_RENDERERS } from "../fields/widget_registry.js";
 
 const attr = (node, name) => (node ? node.getAttribute(name) || "" : "");
 const hasStaticAttr = (node, name) => {
@@ -163,7 +171,6 @@ export class FormField extends owl.Component {
          t-att-style="hidden ? 'display: none;' : ''">
       <label t-if="showLabel" class="o_form_label" t-att-for="'field-' + name" t-esc="labelText"/>
       <div t-if="isNewSimulation" class="o_form_readonly" t-att-data-field="name">Nouveau</div>
-      <span t-elif="isVanilla" t-ref="vanillaHost" class="o_field_widget" t-att-class="'o_field_' + fieldType"/>
       <div t-else="" class="o_field_widget" t-att-class="'o_field_' + fieldType">
         <t t-if="isOne2many">
           <span t-ref="o2mHost" data-o2m-root="true"><t t-if="innerName" t-component="innerName" t-props="innerProps"/></span>
@@ -184,9 +191,7 @@ export class FormField extends owl.Component {
 
   setup() {
     this.cellRef = owl.useRef("cell");
-    this.vanillaHostRef = owl.useRef("vanillaHost");
     this.o2mHostRef = owl.useRef("o2mHost");
-    this.injectedVanilla = false;
     // PROXY RÉACTIF PROPRE : en OWL 2, le proxy d'un useState porte le
     // callback de render de son PROPRIÉTAIRE. Lire ici le proxy du
     // renderer ne re-rendrait que le renderer (et ses enfants aux props
@@ -194,8 +199,6 @@ export class FormField extends owl.Component {
     // NOUVEAU proxy lié au render de CE composant -- toute écriture sur
     // la cible (peu importe par quel proxy) notifie tous les abonnés.
     this.reactiveRecord = owl.useState(this.ctx.record || {});
-    owl.onMounted(() => this.mountVanilla());
-    owl.onPatched(() => this.mountVanilla());
   }
 
   /** Contexte du formulaire (posé par FormRenderer dans son env). */
@@ -229,11 +232,6 @@ export class FormField extends owl.Component {
   get fieldType() { return (this.info && this.info.type) || "char"; }
   get widgetName() { return this.node ? this.node.getAttribute("widget") : null; }
   get isOne2many() { return this.fieldType === "one2many" && !this.widgetName; }
-  get isVanilla() {
-    return !this.isNewSimulation && !!this.widgetName
-      && this.widgetName !== "statusbar"
-      && !!WIDGET_RENDERERS[this.widgetName];
-  }
   get isStaticReadonly() {
     const raw = this.node ? this.node.getAttribute("readonly") : null;
     return raw === "1" || raw === "true";
@@ -259,8 +257,17 @@ export class FormField extends owl.Component {
   // ── composant interne (CLASSE résolue : t-component dynamique exige
   // la classe elle-même, la résolution par nom n'est que statique) ──
   get innerName() {
-    if (this.isNewSimulation || this.isVanilla) return null;
+    if (this.isNewSimulation) return null;
     if (this.widgetName === "statusbar") return FIELD_COMPONENTS.statusbar.Component;
+    if (this.widgetName) {
+      // handle : invisible en formulaire (comme chez Odoo) -- PAS de
+      // repli par type (l'ancien rendu vanilla ne sérialisait pas ce
+      // champ, cf. suite widgets).
+      if (this.widgetName === "handle") return null;
+      const widget = WIDGET_COMPONENTS[this.widgetName];
+      if (widget) return widget;
+      // widget inconnu : repli par type (comportement historique).
+    }
     const entry = FIELD_COMPONENTS[this.fieldType];
     return entry ? entry.Component : null;
   }
@@ -280,6 +287,9 @@ export class FormField extends owl.Component {
         initialValue: value,
       };
     }
+    if (this.widgetName && WIDGET_COMPONENTS[this.widgetName] && this.widgetName !== "handle") {
+      return buildWidgetProps(this.widgetName, name, this.info, this.node, value, this.record, (v) => this.onFieldChange(v));
+    }
     const built = buildPropsFor(this.fieldType, name, this.info, this.node, value, this.record);
     if (!built) return { name };
     built.props.onChange = (v) => this.onFieldChange(v);
@@ -293,20 +303,8 @@ export class FormField extends owl.Component {
     emitFieldChange(host);
   }
 
-  /** Injection des widgets vanilla (itération 21) -- couche de transition. */
-  mountVanilla() {
-    if (this.injectedVanilla || !this.isVanilla || !this.vanillaHostRef.el) return;
-    this.injectedVanilla = true;
-    const renderer = WIDGET_RENDERERS[this.widgetName];
-    if (!renderer) return;
-    try {
-      const el = renderer(this.name, this.info, this.node, this.record[this.name], this.record);
-      if (el) this.vanillaHostRef.el.appendChild(el);
-    } catch (err) {
-      console.warn(`[FormField] widget vanilla "${this.widgetName}" non rendu pour ${this.name} :`, err);
-    }
-  }
 }
+
 
 // Registre nominal : t-component résout les noms dans static components.
 export const FIELD_COMPONENTS = {
@@ -328,4 +326,58 @@ export const FIELD_COMPONENTS = {
 FormField.components = {};
 for (const entry of Object.values(FIELD_COMPONENTS)) {
   FormField.components[entry.name] = entry.Component;
+}
+
+/**
+ * Registre des WIDGETS explicites de l'arch (attribut widget="..."),
+ * comme la clé "widget" des fields_get/webclient Odoo 17 -- COMPOSANTS
+ * OWL depuis l'itération 25 (l'ancien registre vanilla
+ * views/fields/widget_registry.js est supprimé). <FormField> consulte
+ * ce registre AVANT le dispatch par type ; le ListRenderer utilise les
+ * MÊMES composants pour ses cellules (variante listDisplay).
+ */
+export const WIDGET_COMPONENTS = {
+  priority: PriorityFieldOwl,
+  badge: BadgeFieldOwl,
+  boolean_toggle: BooleanToggleFieldOwl,
+  radio: RadioFieldOwl,
+  image: ImageFieldOwl,
+  email: LinkFieldOwl,
+  phone: LinkFieldOwl,
+  url: LinkFieldOwl,
+  statinfo: StatinfoFieldOwl,
+};
+
+/**
+ * Dérivation widget -> props (EXPORTÉE : partagée entre <FormField> et
+ * le ListRenderer pour ses cellules). `onChange` est fourni par
+ * <FormField> (écrit le record réactif + diffuse `change`) ; en liste
+ * il est absent (cellules en lecture seule).
+ */
+export function buildWidgetProps(widget, name, info, node, value, values, onChange) {
+  const readonly = computeReadonly(node, values);
+  const base = { name, value, readonly };
+  switch (widget) {
+    case "priority":
+      return { ...base, entries: selectionEntries(info), onChange };
+    case "radio":
+      return { ...base, entries: selectionEntries(info), onChange };
+    case "badge": {
+      const entries = selectionEntries(info);
+      const found = entries.find(([key]) => String(key) === String(value));
+      return { ...base, label: found ? found[1] : (value === false || value === undefined || value === null ? "—" : String(value)) };
+    }
+    case "boolean_toggle":
+      return { ...base, onChange };
+    case "image":
+      return { ...base, label: info.label || name, onChange };
+    case "email":
+    case "phone":
+    case "url":
+      return { ...base, mode: widget, onChange };
+    case "statinfo":
+      return { ...base, text: attr(node, "string") || info.label || name };
+    default:
+      return base;
+  }
 }

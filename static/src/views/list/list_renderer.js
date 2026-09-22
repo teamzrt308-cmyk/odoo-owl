@@ -21,6 +21,7 @@
  */
 
 import { mountOwlApp } from "../../owl/app.js";
+import { WIDGET_COMPONENTS, buildWidgetProps } from "../form/field_component.js";
 import { parseListArch } from "./list_arch_parser.js";
 import { formatCellValue, getDecorationClass, groupLabel } from "./list_renderer_utils.js";
 import { loadOptionalColumnsState, saveOptionalColumnsState } from "./list_column_prefs.js";
@@ -108,9 +109,7 @@ export class ListRenderer extends owl.Component {
                 </td>
                 <td t-foreach="visibleColumns" t-as="col" t-key="col.field" class="o_data_cell o_field_cell">
                   <span t-if="cellWidget(col) === 'handle'" class="o_row_handle fa fa-bars text-muted pe-1" title="Réordonner"/>
-                  <span t-elif="cellWidget(col) === 'priority'" class="o_priority_display" t-esc="priorityText(record, col)" t-att-title="cellText(record, col)"/>
-                  <span t-elif="cellWidget(col) === 'boolean_toggle'" t-att-class="'fa ' + (record[col.field] ? 'fa-check-circle text-success' : 'fa-times-circle text-muted')" t-att-title="cellText(record, col)"/>
-                  <span t-elif="cellWidget(col) === 'image'"><img class="o_list_image rounded" t-att-src="record[col.field] ? 'data:image/png;base64,' + record[col.field] : 'assets/default-app.png'" alt=""/></span>
+                  <t t-elif="widgetComponent(col)" t-component="widgetComponent(col)" t-props="widgetProps(record, col)"/>
                   <span t-elif="isBadge(col)"
                         t-att-class="'badge rounded-pill ' + badgeClass(record, col)"
                         t-esc="cellText(record, col)"/>
@@ -317,13 +316,25 @@ export class ListRenderer extends owl.Component {
     return col.widget || null;
   }
 
-  priorityText(record, col) {
+  /**
+   * Composant OWL de la cellule pour un widget explicite (itération 25 :
+   * les MÊMES composants que <FormField>, variante listDisplay -- les
+   * cellules restent en lecture seule). handle : structurel, rendu par
+   * le template (poignée).
+   */
+  widgetComponent(col) {
+    const w = col.widget;
+    if (!w || w === "handle") return null;
+    return WIDGET_COMPONENTS[w] || null;
+  }
+
+  widgetProps(record, col) {
     const info = (this.props.fieldsInfo || {})[col.field] || {};
-    const entries = Array.isArray(info.selection) ? info.selection : [];
-    const value = record[col.field];
-    const rank = entries.findIndex(([key]) => String(key) === String(value));
-    if (rank < 0) return "☆";
-    return "★".repeat(rank + 1);
+    const base = buildWidgetProps(col.widget, col.field, info, null, record[col.field], record, null);
+    base.listDisplay = true;
+    base.title = String(this.cellText(record, col));
+    if (col.widget === "badge") base.decorationClass = this.badgeClass(record, col);
+    return base;
   }
 
   isBadge(col) {

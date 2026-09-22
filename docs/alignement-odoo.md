@@ -256,11 +256,45 @@ l'ORM d'Odoo -- cette itération comble les trois trous restants :
   dérivation dans les tests) ;
 - bundle : 9218 -> 8809 lignes (~400 lignes mortes purgées) ; 18/18
   vertes ; audit manifest réel : MONTAGE 168/168, PARSE 56×3 ;
-- **transition RESTANTE** (à convertir quand list/kanban auront leurs
-  composants OWL par cellule/carte) : `widget_registry` (widgets
-  vanilla, injectés en form par `mountVanilla`, rendus en cellules list
-  et cartes kanban) + APIs impératives du one2many (contrat sérialiseur
-  assumé).
+- **transition RESTANTE** : réduite (it. 25) aux seules APIs
+  impératives du one2many (contrat sérialiseur assumé sur
+  `[data-o2m-root]`).
+
+### Widgets explicites en composants OWL (itération 25)
+- **`views/fields/widget_registry.js` SUPPRIMÉ** : les 8 widgets
+  vanilla deviennent des COMPOSANTS OWL (`PriorityFieldOwl`,
+  `BadgeFieldOwl`, `BooleanToggleFieldOwl`, `RadioFieldOwl`,
+  `ImageFieldOwl`, `LinkFieldOwl` pour email/phone/url,
+  `StatinfoFieldOwl`) ; `renderHandleField` supprimé -- la poignée
+  reste structurelle dans le template de liste et est invisible en
+  formulaire (pas de repli par type, pas de champ sérialisé) ;
+- **registre `WIDGET_COMPONENTS`** (field_component.js, exporté) :
+  résolution widget -> COMPOSANT, consultée par `<FormField>` AVANT le
+  dispatch par type ; `buildWidgetProps` (exportée) est la dérivation
+  unique widget -> props (valeur du record réactif, readonly évalué,
+  onChange = écriture record + `emitFieldChange`) ;
+- **cellules de liste via les MÊMES composants** : le ListRenderer
+  remplace ses spans inline priority/boolean_toggle/image/badge par
+  un `t-component` dynamique avec la variante `listDisplay` (markup
+  identique : `o_priority_display`, icônes fa, `o_list_image`, badge
+  + decoration-*) -- cellules en lecture seule, même architecture que
+  le webclient où la liste rend les composants de champ ; la sélection
+  SANS widget s'affiche toujours en badge inline (règle de formatage
+  de liste, inchangée) ;
+- **cartes kanban** : déjà OWL (transform compile-time du template de
+  l'arch, image base64 réactive avec placeholder local) -- aucun
+  changement ;
+- contrat sérialiseur INTACT : inputs cachés `#field-<name>` déclarés
+  DANS les templates des composants (priority/badge/radio/image/
+  statinfo), checkbox native (boolean_toggle), input (liens) ;
+  `hiddenValueInput` (selection_utils) supprimé ;
+- écart OWL : `String()` n'est pas disponible dans les expressions de
+  template -- passer par des getters ;
+- test-list-controller : attente fixe de la recherche remplacée par un
+  poll (fluage de timing sous charge) ;
+- suites : 18/18 vertes (test-widgets-owl VERBATIM : mêmes sélecteurs,
+  mêmes comportements étoiles/toggle/radio/liens/upload) ; audit
+  MONTAGE 168/168, PARSE 56x3 ; bundle 8903 lignes.
 
 ### Contrôleurs (itérations 5-6, 11)
 - `FormController`, `ListController`, `KanbanController` (**dédié** depuis l'itération 11, descripteur `{ Controller }`) : **composants OWL**, zones en template, logique offline intacte (sync, règles document, ledger, actions objet, sauvegarde, pagination, recherche, dashboard), `onMounted`/`onWillDestroy`.
@@ -292,7 +326,10 @@ l'ORM d'Odoo -- cette itération comble les trois trous restants :
   (handle) n'est pas encore câblé ; le clic sur une tuile statinfo
   (action serveur) reste à traiter avec le button_box fonctionnel ;
 - `css/odoo_widgets.css` (styles spécifiques) chargé par index.html et
-  pré-caché par le service-worker.
+  pré-caché par le service-worker ;
+- **itération 25** : les rendus vanilla de ce registre ont été
+  convertis en composants OWL (voir section it. 25), le registre
+  vanilla est supprimé.
 
 ### Workflow hors ligne : boutons objet + calculs enrichis (itération 20)
 - **Nouveau bucket `object_action`** dans le moteur (`rules/workflow_rules.js`)
@@ -440,13 +477,12 @@ Correctifs révélés par l'audit (`scripts/tests/audit-manifest.mjs
   `<FormField>` (views/form/field_component.js) directement dans le
   template compilé, et le record réactif du renderer (useState) est la
   source de vérité -- plus de remplissage impératif data-form-slot.
-  Migration PROGRESSIVE : depuis l'itération 24, le field_bridge est
-  SUPPRIMÉ (héritiers purs : `owl/field_events.js`,
-  `views/form/field_attrs.js`) ; la couche de transition restante est
-  le registre vanilla (widget_registry, injecté en form par
-  `mountVanilla`, rendu en cellules list / cartes kanban) et les APIs
-  impératives du one2many (contrat sérialiseur assumé sur
-  `[data-o2m-root]`). CONTRATS INTANGIBLES
+  Migration PROGRESSIVE : field_bridge supprimé (it. 24, héritiers
+  purs : `owl/field_events.js`, `views/form/field_attrs.js`),
+  widget_registry supprimé (it. 25, registre OWL `WIDGET_COMPONENTS`
+  partagé form + cellules de liste) ; la transition restante se
+  limite aux APIs impératives du one2many (contrat sérialiseur
+  assumé sur `[data-o2m-root]`). CONTRATS INTANGIBLES
   à chaque étape : valeur (`#field-<name>` / `getLines()`), relations
   (m2o hidden `_id`, m2m JSON, o2m composant + sub_fields), invisible/
   readonly/required désormais RÉACTIFS par construction (ré-évalués à

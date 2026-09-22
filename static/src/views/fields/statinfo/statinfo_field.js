@@ -1,24 +1,37 @@
 /**
  * views/fields/statinfo/statinfo_field.js
  * =======================================
- * Widget "statinfo" : tuile du button_box (compteur + libellé). Dans le
- * button_box la tuile est compilée par form_arch_parser.js (emitButtonBox)
- * avec la valeur injectée ; ce renderer n'est utilisé que si le champ se
- * retrouve hors button_box.
+ * Widget "statinfo" -- COMPOSANT OWL (itération 25) : tuile compteur +
+ * libellé. Dans le button_box la tuile reste compilée par
+ * form_arch_parser.js (emitButtonBox, valeur injectée au compile-time) ;
+ * ce composant n'est utilisé que si le champ se retrouve hors
+ * button_box. Valeur conservée via input caché #field-<name>.
  */
-import { hiddenValueInput } from "../selection_utils.js";
+export class StatinfoFieldOwl extends owl.Component {
+  static template = owl.xml`
+    <div class="o_stat_info d-inline-flex flex-column align-items-center">
+      <input type="hidden"
+             t-att-id="'field-' + props.name"
+             t-att-data-field="props.name"
+             t-att-value="hiddenValue"/>
+      <span class="o_stat_value fw-bold fs-5" t-esc="displayValue"/>
+      <span class="o_stat_text text-muted small" t-esc="props.text"/>
+    </div>
+  `;
 
-export function renderStatinfoField(name, info, node, initialValue) {
-  const wrap = document.createElement("div");
-  wrap.className = "o_stat_info d-inline-flex flex-column align-items-center";
-  wrap.appendChild(hiddenValueInput(name, initialValue));
-  const value = document.createElement("span");
-  value.className = "o_stat_value fw-bold fs-5";
-  value.textContent = String(initialValue === undefined || initialValue === false ? 0 : initialValue);
-  const text = document.createElement("span");
-  text.className = "o_stat_text text-muted small";
-  text.textContent = node.getAttribute("string") || info.label || name;
-  wrap.appendChild(value);
-  wrap.appendChild(text);
-  return wrap;
+  static props = {
+    name: String,
+    value: { optional: true },
+    text: { type: String, optional: true },
+  };
+
+  get hiddenValue() {
+    const v = this.props.value;
+    return v === false || v === undefined || v === null ? "" : String(v);
+  }
+
+  get displayValue() {
+    const v = this.props.value;
+    return v === undefined || v === false ? "0" : String(v);
+  }
 }

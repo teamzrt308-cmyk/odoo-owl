@@ -73,11 +73,13 @@ done
   required visuel, événements o2m → règles RACINE (qty ligne →
   amount_total), sérialiseur (`#field-<name>`, hidden inputs, APIs
   getLines de l'hôte `[data-o2m-root]`).
-- `test-widgets-owl.mjs` : widgets de champ (itération 21) — priority
-  (étoiles + clic), badge, boolean_toggle, radio, image (base64 +
-  placeholder), email/phone/url (liens locaux), handle (liste), statinfo
-  (tuile button_box), contrat sérialiseur (#field-<name>), cellules de
-  liste et carte kanban image.
+- `test-widgets-owl.mjs` : widgets de champ — priority (étoiles +
+  clic), badge, boolean_toggle, radio, image (base64 + placeholder),
+  email/phone/url (liens locaux), handle (liste), statinfo (tuile
+  button_box), contrat sérialiseur (#field-<name>), cellules de liste
+  (MÊMES composants OWL que le form, variante listDisplay, it. 25) et
+  carte kanban image. Verbatim : sélecteurs/contrats inchangés depuis
+  la conversion des widgets vanilla en composants OWL.
 - `test-workflow-rules-owl.mjs` : workflow hors ligne (itération 20) —
   verrous `fromStates` (canRunObjectAction), états optimistes
   (computeOptimisticStateUpdate, fusion stock_effect + object_action),

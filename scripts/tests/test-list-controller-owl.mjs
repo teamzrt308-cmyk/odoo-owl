@@ -168,9 +168,14 @@ const searchInput = container.querySelector(".o_control_panel input[type=search]
 ok(!!searchInput, "list : champ de recherche présent");
 searchInput.value = "SO022";
 searchInput.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
-await new Promise((r) => setTimeout(r, 400));
-ok(container.querySelectorAll("tr.o_data_row").length === 1 && container.textContent.includes("SO022"),
-   "list : recherche filtre les enregistrements");
+// Polling (attente fixe trop juste sous charge : debounce 300 ms du
+// control panel + re-render) -- convention de la suite.
+let searchOk = false;
+for (let i = 0; i < 300 && !searchOk; i++) {
+  searchOk = container.querySelectorAll("tr.o_data_row").length === 1 && container.textContent.includes("SO022");
+  if (!searchOk) await new Promise((r) => setTimeout(r, 10));
+}
+ok(searchOk, "list : recherche filtre les enregistrements");
 searchInput.value = "";
 searchInput.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
 await new Promise((r) => setTimeout(r, 400));
