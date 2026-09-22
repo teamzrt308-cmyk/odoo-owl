@@ -6,6 +6,7 @@ import { initRulesEngine } from "./model/rules_engine/rules_engine.js";
 import { allRules } from "./model/rules_engine/rules/index.js";
 
 import "./webclient/login/login.js";
+import "./webclient/login/unlock.js";
 import { mountWebclient } from "./webclient/webclient.js";
 import "./views/view.js";
 import "./webclient/home_menu/home_menu.js";

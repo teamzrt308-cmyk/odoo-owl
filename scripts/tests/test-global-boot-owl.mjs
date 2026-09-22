@@ -200,7 +200,10 @@ document.querySelector(".oe_login_form").dispatchEvent(new dom.window.Event("sub
 await waitFor(() => document.querySelector(".dashboard-container"), "home menu après login");
 ok(!!document.querySelector(".dashboard-container"), "global : login OK -> HOME MENU (grille des apps)");
 const session = JSON.parse(localStorage.getItem("offline_sync_session"));
-ok(session && session.uid === 5 && session.api_key === "KEY", "global : session sauvée (Alice / KEY)");
+ok(session && session.uid === 5, "global : session sauvée (Alice)");
+ok(!session.api_key && !!localStorage.getItem("offline_sync_vault") &&
+   sessionStorage.getItem("offline_sync_unlocked_key") === "KEY",
+   "global : M9 -- clé chiffrée au coffre, déverrouillée pour l'onglet");
 const secRows = await db.security_info.toArray();
 ok(secRows.some((r) => r.model === "sale.order" && r.is_admin === true), "global : droits Security Engine en cache");
 ok(location.hash.includes("tag=home_menu"), "global : hash #tag=home_menu (redirectTo appliqué)");

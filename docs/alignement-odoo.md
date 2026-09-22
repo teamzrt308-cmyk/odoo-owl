@@ -584,9 +584,27 @@ Mesures **déploiement** (guides dans `SECURITY.md` de l'addon) :
 https), **M11** `odoo.conf` (`list_db=False`, `db_filter`,
 `admin_passwd`, `proxy_mode`) + retrait des secrets versionnés.
 
-Mesure **M9 (PIN WebCrypto)** : non implémentée -- décision en attente
-(PIN optionnel ou obligatoire ? déverrouillage à chaque boot ? PIN
-oublié = purge locale + reconnexion ?).
+Mesure **M9 (coffre de session, « mot de passe », PAS de PIN)** --
+implémentée : la clé API n'est plus jamais en clair dans localStorage.
+Elle est chiffrée **AES-GCM 256** avec une clé dérivée **PBKDF2-SHA256
+(210 000 itérations)** du **mot de passe Odoo** de l'utilisateur (aucun
+nouveau secret à créer/retenir) :
+- `core/browser/vault.js` : createVault/unlockVault/clearVault (le
+  déchiffrement EST la vérification : aucun vérificateur stocké) ;
+- login : coffre créé avec le mot de passe saisi ; session sans
+  `api_key` ; clé déverrouillée en sessionStorage (durée de l'onglet) ;
+  repli legacy (clé en clair + warn) si WebCrypto indisponible (non
+  https) ;
+- boot verrouillé : la garde doAction redirige vers l'écran **unlock**
+  (`webclient/login/unlock.js`) tant que le mot de passe n'est pas
+  resaisi ; « Mot de passe oublié » = purge coffre + session -> login
+  (la clé est régénérée par le serveur) ;
+- appareil volé / onglet fermé = session inutilisable hors ligne ;
+  sessions legacy (clé en clair) tolérées, migrées au prochain login ;
+- logo wikimedia du login remplacé par un logo texte (la CSP img-src
+  bloquait l'image externe).
+
+Suite : `test-vault-security.mjs` (18 assertions) ; batteries : 21/21.
 
 Suite : `scripts/tests/test-security-hardening.mjs` (20 assertions :
 CSP, intercepteur 401, logoutServeur). Batterie complète : 20/20.

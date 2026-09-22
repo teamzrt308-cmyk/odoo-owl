@@ -6,11 +6,27 @@
  * localStorage to survive offline reloads/restarts.
  */
 
+import { clearVault } from "./vault.js";
+
 export const CONFIG = {
   ODOO_BASE_URL: "http://localhost:8069",
 };
 
 const SESSION_STORAGE_KEY = "offline_sync_session";
+// M9 (coffre) : clé API déverrouillée pour la durée de l'ONGLET
+// (sessionStorage) -- localStorage ne contient plus que le coffre
+// chiffré (cf. vault.js).
+const UNLOCKED_KEY_STORAGE = "offline_sync_unlocked_key";
+
+function unlockedKeyRaw() {
+  try {
+    return typeof sessionStorage !== "undefined"
+      ? sessionStorage.getItem(UNLOCKED_KEY_STORAGE)
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Reads the complete local session ({ uid, name, api_key }), or null if absent. */
 export function getSession() {
@@ -28,6 +44,17 @@ export function saveSession(session) {
     ...session,
     serverUrl: CONFIG.ODOO_BASE_URL,
   }));
+  // Cohérence M9 : une session (re)créée sans api_key ne doit pas
+  // hériter d'une clé déverrouillée d'une session précédente.
+  if (session && !session.api_key) {
+    try {
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.removeItem(UNLOCKED_KEY_STORAGE);
+      }
+    } catch {
+      // ignoré
+    }
+  }
 }
 
 /** Base Odoo de la session (tampon multi-bases), ou null si absente. */
@@ -49,15 +76,42 @@ export function withDb(url, explicitDb = null) {
   return url + (url.includes("?") ? "&" : "?") + "db=" + encodeURIComponent(db);
 }
 
-/** Clears the local session (log out, or invalid API key on the server side). */
+/** Clears the local session (log out, or invalid API key on the server side).
+ * M9 : efface aussi la clé déverrouillée (onglet) et le coffre chiffré. */
 export function clearSession() {
   localStorage.removeItem(SESSION_STORAGE_KEY);
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem(UNLOCKED_KEY_STORAGE);
+    }
+  } catch {
+    // sessionStorage indisponible : rien à purger.
+  }
+  clearVault();
 }
 
-/** Shortcut: API key for the current session, or null if not logged in. */
+/** Shortcut: API key for the current session, or null if not logged in.
+ * M9 : la clé vient de la session ONGLET (déverrouillée par le mot de
+ * passe Odoo) ; repli : sessions legacy d'avant le coffre (clé en clair
+ * dans localStorage -- migrée au prochain login). */
 export function getApiKey() {
+  const unlocked = unlockedKeyRaw();
+  if (unlocked) return unlocked;
   const session = getSession();
-  return session ? session.api_key : null;
+  return session && session.api_key ? session.api_key : null;
+}
+
+/** M9 : mémorise la clé déverrouillée pour la durée de l'onglet. */
+export function setUnlockedKey(apiKey) {
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.setItem(UNLOCKED_KEY_STORAGE, apiKey);
+    }
+  } catch {
+    // sessionStorage indisponible : la clé reste en mémoire vive de
+    // l'appelant uniquement (l'app exige un re-déverrouillage au
+    // prochain boot de toute façon).
+  }
 }
 
 /** Shortcut: Odoo user ID of the current session, or null. */

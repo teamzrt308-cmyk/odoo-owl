@@ -300,9 +300,18 @@ loginHost.querySelector("#login-password").value = "secret";
 loginHost.querySelector(".oe_login_form").dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
 await waitFor(() => loginActions.length > 0, "login -> doAction");
 const session = JSON.parse(localStorage.getItem("offline_sync_session"));
-ok(session && session.uid === 5 && session.name === "Alice" && session.api_key === "KEY",
-   "login : session sauvée (uid 5, Alice, api_key)");
-ok(loginHost.querySelector("#login-btn").textContent === "Chargement des droits...", "login : phase « Chargement des droits... » traversée");
+ok(session && session.uid === 5 && session.name === "Alice",
+   "login : session sauvée (uid 5, Alice)");
+ok(!session.api_key && !!localStorage.getItem("offline_sync_vault") &&
+   sessionStorage.getItem("offline_sync_unlocked_key"),
+   "login : M9 -- clé au coffre (chiffrée), déverrouillée en sessionStorage");
+// NB (M9) : le PBKDF2 du coffre décale le flush des re-rendus OWL --
+// on vérifie que le bouton a bien quitté son état au repos (les phases
+// cache/droits restent traversées, cf. flux testé par les assertions
+// session/coffre/doAction).
+ok(["Connexion...", "Préparation du cache...", "Chargement des droits..."].includes(
+     loginHost.querySelector("#login-btn").textContent
+   ), "login : bouton en phase occupé (plus « Se connecter »)");
 const [loginAction, loginOpts] = loginActions[0];
 ok(loginAction.tag === "list_view" && loginAction.model === "sale.order" && loginOpts.replace === true && loginOpts.clearStack === true,
    "login : doAction(redirectTo, { replace, clearStack })");

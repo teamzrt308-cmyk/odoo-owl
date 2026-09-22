@@ -34,6 +34,7 @@ globalThis.XMLSerializer = dom.window.XMLSerializer;
 globalThis.MutationObserver = dom.window.MutationObserver;
 globalThis.location = dom.window.location;
 globalThis.localStorage = dom.window.localStorage;
+globalThis.sessionStorage = dom.window.sessionStorage;
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
 Object.defineProperty(dom.window.navigator, "onLine", { value: true, configurable: true });
 Object.defineProperty(globalThis.navigator, "onLine", { value: true, configurable: true });
@@ -173,7 +174,10 @@ ok(withDb(`${CONFIG_URL}/x?a=1`) === `${CONFIG_URL}/x?a=1&db=vente1`, "withDb : 
   host.querySelector("#login-btn").click();
   for (let i = 0; i < 100 && !getSession(); i++) await tick();
   const session = getSession();
-  ok(!!session && session.db === "vente1" && session.api_key === "k-test", "login : session sauvée avec la base résolue");
+  ok(!!session && session.db === "vente1", "login : session sauvée avec la base résolue");
+  ok(!session.api_key && !!localStorage.getItem("offline_sync_vault") &&
+     sessionStorage.getItem("offline_sync_unlocked_key") === "k-test",
+     "login : M9 -- clé chiffrée dans le coffre, déverrouillée pour l'onglet");
   ok(session.serverUrl === CONFIG.ODOO_BASE_URL, "login : tampon serverUrl dans la session");
   const stamp = await stampRow();
   ok(!!stamp && stamp.value.db === "vente1", "login : tampon db_stamp écrit dans cache_meta");

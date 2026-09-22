@@ -15,7 +15,8 @@
  */
 
 import { registry } from "../../core/registry.js";
-import { CONFIG, saveSession, withDb } from "../../core/browser/session.js";
+import { CONFIG, saveSession, withDb, setUnlockedKey } from "../../core/browser/session.js";
+import { createVault, cryptoAvailable } from "../../core/browser/vault.js";
 import { fetchAndStoreSecurityInfo } from "../../core/user_service.js";
 import { ensureCacheOwnership } from "../../core/cache_owner.js";
 import { loadScopedCss, unloadScopedCss } from "../../core/assets.js";
@@ -34,8 +35,9 @@ export class Login extends owl.Component {
           <div class="card border-0 mx-auto bg-100 o_database_list" style="max-width: 300px;">
             <div class="card-body">
               <div class="text-center pb-3 border-bottom mb-4">
-                <img alt="Logo" style="max-height:120px; max-width:100%; width:auto"
-                     src="https://upload.wikimedia.org/wikipedia/commons/2/2c/Odoo-logo.svg"/>
+                <!-- Logo texte : une image externe serait bloquée par
+                     la CSP (img-src 'self' data:) -->
+                <span style="font-size:2.4rem; font-weight:700; color:#714B67; letter-spacing:-1px">odoo</span>
               </div>
 
               <form class="oe_login_form" role="form" t-on-submit.prevent="onSubmit">
@@ -134,12 +136,23 @@ export class Login extends owl.Component {
       }
 
       const resolvedDb = data.db || dbSelection || undefined;
-      saveSession({
-        uid: data.uid,
-        name: data.name,
-        api_key: data.api_key,
-        db: resolvedDb,
-      });
+      // M9 (coffre, « mot de passe », pas de PIN) : la clé API est
+      // chiffrée AES-GCM avec une clé dérivée PBKDF2 du mot de passe
+      // ODOO saisi -- aucun nouveau secret. Repli legacy (clé en clair)
+      // si WebCrypto est indisponible (contexte non https).
+      let vaultOk = false;
+      if (cryptoAvailable()) {
+        try {
+          await createVault(password, data.api_key);
+          vaultOk = true;
+        } catch (vaultErr) {
+          console.warn("Coffre de session impossible -- repli legacy (clé en clair)", vaultErr);
+        }
+      }
+      saveSession(vaultOk
+        ? { uid: data.uid, name: data.name, db: resolvedDb }
+        : { uid: data.uid, name: data.name, db: resolvedDb, api_key: data.api_key });
+      if (vaultOk) setUnlockedKey(data.api_key);
 
       // Purge le cache local s'il appartenait à un autre utilisateur OU
       // à une autre base (tampon {db, serverUrl} conservé dans cache_meta).

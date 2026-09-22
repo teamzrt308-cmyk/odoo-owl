@@ -19,6 +19,7 @@ import { router } from "../../core/browser/router_service.js";
 import { bus } from "../../core/bus/bus_service.js";
 import { getApiKey } from "../../core/browser/session.js";
 import { verifyLocalStamp } from "../../core/cache_owner.js";
+import { vaultExists } from "../../core/browser/vault.js";
 import { notifications } from "../../core/notifications/notification_service.js";
 import { effects } from "../../core/effects/rainbow_man.js";
 import { queueMethodCall, syncPendingActions } from "../../core/network/rpc_service.js";
@@ -88,10 +89,12 @@ export class ActionService {
       }
     }
 
-    // --- Authentication Guard ---
-    if (tag !== "login" && !getApiKey()) {
+    // --- Authentication / Verrouillage Guard ---
+    // M9 (coffre) : sans clé déverrouillée -> écran UNLOCK si un coffre
+    // existe (session chiffrée, mot de passe Odoo requis), sinon LOGIN.
+    if (tag !== "login" && tag !== "unlock" && !getApiKey()) {
       return this.doAction(
-        { tag: "login", redirectTo: { tag, ...params } },
+        { tag: vaultExists() ? "unlock" : "login", redirectTo: { tag, ...params } },
         { replace: true }
       );
     }
