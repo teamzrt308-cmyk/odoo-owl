@@ -1,4 +1,5 @@
 import { registry } from "./core/registry.js";
+import { installFetchGuard } from "./core/network/fetch_guard.js";
 import { bus } from "./core/bus/bus_service.js";
 import { router } from "./core/browser/router_service.js";
 import { initRulesEngine } from "./model/rules_engine/rules_engine.js";
@@ -44,6 +45,10 @@ function startServices() {
 }
 
 async function boot() {
+  // Sécurité : garde 401 (clé expirée/révoquée -> déconnexion locale)
+  // branchée AVANT tout autre service.
+  installFetchGuard();
+
   startServices();
 
   // Doit être fait avant tout rendu de formulaire/liste : les règles

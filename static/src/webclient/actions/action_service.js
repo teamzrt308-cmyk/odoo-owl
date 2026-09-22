@@ -46,6 +46,19 @@ export class ActionService {
       goBack: this.goBack.bind(this),
     };
 
+    // Sécurité (mesure 4) : 401 intercepté par le fetch guard (clé
+    // expirée/révoquée) -> toast + redirection login immédiate.
+    bus.subscribe("auth:expired", () => {
+      notifications.add({
+        title: "Session expirée",
+        message: "Votre clé d'accès n'est plus valide. Reconnectez-vous.",
+        type: "danger",
+        sticky: false,
+        autoCloseDelay: 6000,
+      });
+      this.doAction({ tag: "login" }, { replace: true, clearStack: true });
+    });
+
     // Browser back/forward button -> restore state without
     // pushing onto the history stack (otherwise, infinite loop).
     router.onStateChange((state) => this.restoreState(state)); 

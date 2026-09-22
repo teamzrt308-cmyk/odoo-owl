@@ -542,3 +542,51 @@ Addon : `login` et `ping` renvoient `db: request.env.cr.dbname`
 base n'est résolue. Suite : `scripts/tests/test-db-guard-owl.mjs` (22
 assertions : withDb, tampon, garde URL/base, confirm OK/Annulé,
 ownership uid+base, login OWL).
+
+## Lot sécurité (11 mesures)
+
+Mesures **implémentées** (addon v17.0.1.1.0 + PWA) -- guide de
+déploiement complet : `SECURITY.md` à la racine de l'addon.
+
+- **M3 (addon)** : clé API plus jamais en clair -- HMAC-SHA256(clé,
+  `database.secret`) + préfixe 8 car. (`offline_sync_key_hash`) ; le
+  login RÉGÈNÈRE la clé (le secret n'existe que dans la réponse) ;
+  migration paresseuse des clés en clair d'avant durcissement.
+  Conséquence assumée : connecter un appareil révoque les sessions
+  antérieures du même utilisateur (401 au prochain appel).
+- **M4 (addon+PWA)** : TTL `offline_sync.api_key_ttl_days` (30 j, 0 =
+  illimité) -> 401 ; route `POST /offline_sync/logout` (Bearer,
+  révocation) ; PWA : `core/network/fetch_guard.js` -- intercepteur 401
+  des URLs offline_sync (session effacée + bus `auth:expired` -> toast +
+  redirection login) et `logoutServeur()` appelé par le bouton
+  Déconnexion (no-op hors ligne, `?db=` étiqueté).
+- **M5 (addon)** : rate-limit login -- 5 échecs / 15 min par (IP,
+  login) -> 429 + Retry-After (compteur mémoire par worker).
+- **M2 (PWA)** : CSP meta dans `index.html` (`default-src 'self'`,
+  `script-src 'self'`, `style-src 'self' 'unsafe-inline'`,
+  `img-src 'self' data: blob:`, `connect-src 'self'
+  http://localhost:8069` -- adapter en prod, `object-src 'none'`).
+- **M7 (addon)** : push -- création de file dans try, try/except PAR
+  action (statut `error`, le push continue), plafonds
+  `offline_sync.push_max_actions` (100) / `push_max_payload_bytes`
+  (1 Mo) ; surplus = erreur transitoire (la PWA conserve en file).
+- **M8 (addon, 4 bugs audit)** : (a) effacement de champ OK
+  (None/""/False -> write False ; listes o2m/m2m non-liste ignorées) ;
+  (b) `bool(result.get("type"))` ; (c) reference_records filtré par
+  company_id + tri par id ; (d) `_extract_id` dédupliqué.
+- **M10 (addon)** : logs structurés login/logout/429/clés/push (uid, IP,
+  uuid) -- grep `offline_sync` dans odoo.log.
+- **M6 (addon)** : CORS fail-safe -- config `*` REFUSÉE, origines
+  normalisées (sans `/` final) ; liste explicite obligatoire.
+
+Mesures **déploiement** (guides dans `SECURITY.md` de l'addon) :
+**M1** HTTPS+HSTS (nginx + Let's Encrypt, `CONFIG.ODOO_BASE_URL`
+https), **M11** `odoo.conf` (`list_db=False`, `db_filter`,
+`admin_passwd`, `proxy_mode`) + retrait des secrets versionnés.
+
+Mesure **M9 (PIN WebCrypto)** : non implémentée -- décision en attente
+(PIN optionnel ou obligatoire ? déverrouillage à chaque boot ? PIN
+oublié = purge locale + reconnexion ?).
+
+Suite : `scripts/tests/test-security-hardening.mjs` (20 assertions :
+CSP, intercepteur 401, logoutServeur). Batterie complète : 20/20.

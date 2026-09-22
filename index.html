@@ -4,6 +4,12 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <!-- CSP (lot sécurité, mesure 2) : scripts locaux uniquement, styles
+       inline limités aux CSS scopées injectées, connect-src restreint à
+       l'origine Odoo (adapter http://localhost:8069 en production :
+       https://odoo.mondomaine.mg, cf. SECURITY.md de l'addon). -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:8069; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'">
   <title>Odoo Offline</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="stylesheet" href="./css/odoo_widgets.css">

@@ -15,6 +15,7 @@
  */
 
 import { getSession, clearSession } from "../../core/browser/session.js";
+import { logoutServeur } from "../../core/network/fetch_guard.js";
 import { getSyncQueueSummary } from "../../core/network/rpc_service.js";
 import { getCachedProfile } from "../../core/user_service.js";
 import { db } from "../../core/orm_service.js";
@@ -152,6 +153,11 @@ export class UserMenu extends owl.Component {
       const confirmed = confirm(`${total} action(s) non synchronisée(s) avec Odoo. Se déconnecter quand même ?`);
       if (!confirmed) return;
     }
+    // Sécurité (mesure 4) : révocation SERVEUR de la clé (no-op hors
+    // ligne), puis logout local immédiat. Le login régénère de toute
+    // façon la clé : une clé non révocable maintenant sera invalide au
+    // prochain login de l'utilisateur.
+    await logoutServeur();
     clearSession();
     this.close();
     if (this.props.onLogout) this.props.onLogout();
