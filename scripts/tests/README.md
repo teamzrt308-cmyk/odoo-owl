@@ -65,9 +65,12 @@ done
   présent) → form fiche 42 → save (file hors ligne, 0 erreur console
   inattendue). Vérifie le câblage croisé de TOUTES les itérations.
 
-- `test-field-bridge-contract.mjs` : contrat field_bridge — invisible
-  LIVE (cellule masquée/rendue sans re-render), marqueur required visuel,
-  événements o2m → règles RACINE (qty ligne → amount_total), sérialiseur.
+- `test-field-bridge-contract.mjs` : contrat sérialiseur du formulaire
+  (depuis l'itération 23, vérifié sur le pipeline `<FormField>`) —
+  invisible LIVE (cellule masquée/rendue sans re-render), marqueur
+  required visuel, événements o2m → règles RACINE (qty ligne →
+  amount_total), sérialiseur (`#field-<name>`, hidden inputs, APIs
+  getLines de l'hôte `[data-o2m-root]`).
 - `test-widgets-owl.mjs` : widgets de champ (itération 21) — priority
   (étoiles + clic), badge, boolean_toggle, radio, image (base64 +
   placeholder), email/phone/url (liens locaux), handle (liste), statinfo

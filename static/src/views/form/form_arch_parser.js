@@ -71,7 +71,11 @@ function getItemSpan(node) {
 function emitFieldSlot(node, ctx, mode) {
   const index = ctx.slots.length;
   ctx.slots.push({ index, kind: "field", node, mode, name: node.getAttribute("name") });
-  return `<div class="o_form_field_slot" data-form-slot="${index}"></div>`;
+  // Pipeline natif (Odoo 17) : le template contient directement le
+  // COMPOSANT <FormField> (comme <Field>) -- plus aucun remplissage
+  // impératif post-render (le field bridge reste la couche de transition
+  // pour les widgets vanilla et le one2many).
+  return `<FormField index="${index}" mode="${mode}"/>`;
 }
 
 function emitStandaloneLabel(node) {
@@ -366,7 +370,7 @@ function emitHeader(node, ctx) {
     if (info && info.selection) {
       const index = ctx.slots.length;
       ctx.slots.push({ index, kind: "statusbar", node: statusField, mode: "statusbar", name: fieldName });
-      statusbarHtml = `<div class="o_statusbar_slot" data-form-slot="${index}"></div>`;
+      statusbarHtml = `<div class="o_statusbar_slot"><FormField index="${index}" mode="statusbar"/></div>`;
     }
   }
 
@@ -504,7 +508,7 @@ export function buildFormTemplate(formRoot, { fieldsInfo, initialValues, securit
   return {
     templateName: TEMPLATE_NAME,
     templateXml,
-    fieldSlots: ctx.slots,
+    fieldSlots: ctx.slots, // alias historique == fieldNodes des <FormField>
     headerButtons: ctx.headerButtons,
   };
 }

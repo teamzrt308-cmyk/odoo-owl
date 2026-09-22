@@ -191,10 +191,45 @@ l'ORM d'Odoo -- cette itération comble les trois trous restants :
   dashboard → filtres actifs → requête texte ; candidats « Grouper par »
   fusionnés avec les filtres de groupe du `<search>`.
 
-### Renderer form (itération 4)
+### Renderer form (itération 4, migré en 23)
 - `form_arch_parser.js::buildFormTemplate()` : **arch → template OWL** (scaffolding, groups `o_inner_group` avec colspan/newline, notebook réactif, h1, button_box, header buttons, statusbar) ;
-- `FormRenderer` composant OWL (emplacements `data-form-slot` remplis après render, `ready` = saisies garanties) ;
+- `FormRenderer` composant OWL (voir itération 23 : plus d'emplacements
+  impératifs -- le template contient directement les composants) ;
 - compilateurs DOM vanilla supprimés (form_compiler, form_group, form_header, button_box, core/notebook).
+
+### Pipeline natif `<Field>` OWL (itération 23)
+- **Arch XML -> `<Field>` OWL -> rendu OWL**, comme le webclient 17 :
+  `emitFieldSlot` émet désormais `<FormField index="i" mode="…"/>`
+  directement dans le template compilé (plus d'emplacements
+  `data-form-slot` remplis après render, plus de `mountFieldSlots`) ;
+- **`views/form/field_component.js::FormField`** : composant champ
+  unique qui résout le composant interne par TYPE (registre
+  `FIELD_COMPONENTS` : les 13 classes OWL des champs) ou injecte le
+  widget vanilla (widget_registry it. 21, couche de transition) ;
+  simulation « Nouveau » (readonly statique + vide + sans id) conservée ;
+- **Record réactif** : `FormRenderer.record = useState(initialValues)`
+  publié aux champs par sous-env OWL (`useSubEnv({ __formCtx })` --
+  l'env racine est gelé). Particularité OWL 2 : le proxy useState porte
+  le callback de render de son PROPRIÉTAIRE -- chaque `<FormField>`
+  recrée son propre proxy (`useState(ctx.record)`) pour que ses lectures
+  (valeur, invisible, readonly, required) l'abonnent LUI ; une écriture
+  sur la cible notifie tous les proxys ;
+- **attrs dynamiques réactifs par construction** : invisible/readonly/
+  required ré-évalués à CHAQUE rendu sur le record (plus de mutation
+  DOM : `dynamic_field_attrs.attachLiveBusinessRules` n'est plus
+  appelé quand `_formState` existe -- couche de transition conservée) ;
+- **API état du renderer** (`_formState` sur le host + la racine) :
+  `getValues()` (contrat sérialiseur inchangé), `applyGraph()` --
+  réinjection RÉACTIVE du graphe racine des règles métier (remplace
+  `applyDocumentGraphToDom` ; même garde-fou champ focalisé) ; les
+  one2many restent pilotés par leurs APIs impératives ;
+- **Contrats conservés** : `#field-<name>`, hidden inputs m2o/m2m,
+  `data-one2many` + `[data-o2m-root]` (le composant o2m vit DANS le
+  span hôte et s'y publie via `closest()` au onMounted :
+  `getLines/getLineIds/applyLineUpdates/adjustLineFields`),
+  `emitFieldChange` (bulle `change` -> passe de règles debounce 200 ms) ;
+- suites : 18/18 vertes ; audit manifest réel : MONTAGE 168/168,
+  PARSE list/kanban/form 56×3.
 
 ### Contrôleurs (itérations 5-6, 11)
 - `FormController`, `ListController`, `KanbanController` (**dédié** depuis l'itération 11, descripteur `{ Controller }`) : **composants OWL**, zones en template, logique offline intacte (sync, règles document, ledger, actions objet, sauvegarde, pagination, recherche, dashboard), `onMounted`/`onWillDestroy`.
@@ -367,20 +402,26 @@ Correctifs révélés par l'audit (`scripts/tests/audit-manifest.mjs
 2. i18n, router, e2e navigateur, a11y.
 
 ## Écarts assumés (spécificité hors ligne, à ne PAS « corriger »)
-- **PRINCIPE ARCHITECTURAL (décision explicite, à ne PAS inverser)** : le
-  moteur conserve le contrat **Arch XML -> sérialisation -> field_bridge
-  -> DOM** et NON Arch -> `<Field>` OWL -> rendu OWL. Ne JAMAIS
-  « corriger » en remplaçant field_bridge par les composants `<Field>`
-  d'OWL. Le contrat est cohérent tant que field_bridge prend en charge :
-  valeur (`#field-<name>` / `getLines()`), type (dispatch
-  SUPPORTED_FIELD_WIDGETS + widget_registry), readonly (statique +
-  expressions, ré-évaluées live), **invisible (ré-évaluée LIVE, cellule
-  masquée/rendue)**, required (attribut + marqueur visuel
-  `.o_field_required`), widget (registre it. 21), **événements** (les
-  widgets OWL diffusent `change` qui bulle -- `emitFieldChange`,
-  règle d'or : ne notifient que les actions UTILISATEUR, jamais les
+- **PRINCIPE ARCHITECTURAL (inversé en itération 23 -- décision
+  explicite de l'utilisateur)** : le rendu migre vers le pipeline natif
+  du webclient 17, **Arch XML -> `<Field>` OWL -> rendu OWL** :
+  `form_arch_parser.buildFormTemplate` émet désormais des COMPOSANTS
+  `<FormField>` (views/form/field_component.js) directement dans le
+  template compilé, et le record réactif du renderer (useState) est la
+  source de vérité -- plus de remplissage impératif data-form-slot.
+  Migration PROGRESSIVE : le field_bridge (it. 22) reste la couche de
+  transition pour les widgets vanilla (widget_registry) et le one2many
+  (APIs impératives sur l'hôte `[data-o2m-root]`). CONTRATS INTANGIBLES
+  à chaque étape : valeur (`#field-<name>` / `getLines()`), relations
+  (m2o hidden `_id`, m2m JSON, o2m composant + sub_fields), invisible/
+  readonly/required désormais RÉACTIFS par construction (ré-évalués à
+  chaque rendu sur le record), événements (`emitFieldChange` -- règle
+  d'or : seules les actions UTILISATEUR notifient, jamais les
   re-renders programmatiques type applyLineUpdates, sinon boucle de
-  sync), relations (m2o hidden `_id`, m2m JSON, o2m composant +
-  sub_fields). Suite garde-fou : `test-field-bridge-contract.mjs` ;
+  sync). Particularité OWL 2 : chaque composant lit le record via son
+  PROPRE proxy useState (le proxy porte le callback de render de son
+  propriétaire -- lire celui du parent ne re-rend pas l'enfant).
+  Suites : `test-field-bridge-contract.mjs` (contrat sérialiseur) +
+  17 autres, vertes à chaque étape ;
 - règles métier locales (`rules_engine`) au lieu des onchange serveur -- mapping Odoo→moteur documenté (itération 17) ;
 - templates compilés depuis l'arch au lieu de templates qweb servis par le serveur.

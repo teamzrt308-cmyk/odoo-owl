@@ -6,26 +6,31 @@
  * l'arch (form_arch_parser.js::buildFormTemplate, comme le webclient
  * natif compile l'arch en template QWeb/OWL). Le scaffolding (sheet_bg,
  * header/statusbar, sheet, chatter) et la structure (groups, notebook,
- * labels, h1, button box) vivent dans le template ; les onglets du
- * notebook sont réactifs (state.activePage).
+ * labels, h1, button box) vivent dans le template.
  *
- * Spécificité hors ligne : les widgets de champ restent montés par
- * owl/field_bridge.js (contrat DOM du sérialiseur : #field-<name>,
- * inputs cachés, data-one2many + API impératives). Après le render,
- * FormRenderer remplit les emplacements data-form-slot du template avec
- * les cellules produites par views/fields/field.js::renderField, puis
- * expose `ready` (promesse) résolue quand toutes les saisies existent.
+ * PIPELINE NATIF (it. 23) : le template compilé contient directement les
+ * COMPOSANTS <FormField> (views/form/field_component.js) -- **Arch XML →
+ * <Field> OWL → rendu OWL**, plus aucun remplissage impératif
+ * post-render. Le record (useState) est la source de vérité réactive :
+ * les <FormField> le lisent et y publient leurs changements ; les
+ * attributs dynamiques (invisible/readonly/required) sont ré-évalués à
+ * chaque rendu, comme les attrs dynamiques du webclient.
+ *
+ * Spécificité hors ligne conservée : contrat DOM du sérialiseur
+ * (#field-<name>, hidden inputs m2o/m2m, data-one2many + APIs
+ * impératives du composant one2many) et widgets "vanilla" du registre
+ * (couche de transition field_bridge).
  */
 
 import { mountOwlApp } from "../../owl/app.js";
 import { notifications } from "../../core/notifications/notification_service.js";
 import { parseFormViewArch, buildFormTemplate } from "./form_arch_parser.js";
-import { renderField } from "../fields/field.js";
-import { renderStatusbarField } from "../fields/statusbar/statusbar.js";
+import { FormField } from "./field_component.js";
+import { collectFormData } from "./form_serializer.js";
 
 export class FormRenderer extends owl.Component {
   static props = {
-    fieldSlots: { type: Array, optional: true },
+    fieldNodes: { type: Array, optional: true },
     headerButtons: { type: Array, optional: true },
     fieldsInfo: { type: Object, optional: true },
     initialValues: { type: Object, optional: true },
@@ -34,81 +39,62 @@ export class FormRenderer extends owl.Component {
     onObjectButtonClick: { type: Function, optional: true },
   };
 
+  static components = { FormField };
+
   setup() {
     // Onglet actif du notebook (réactif : le template bascule les
     // classes active des nav-link/tab-pane via t-att-class).
     this.state = owl.useState({ activePage: 0 });
+    // Record RÉACTIF : source de vérité des <FormField> (comme le
+    // record du renderer Odoo). Copie shallow des valeurs initiales ;
+    // les one2many restent pilotés par les APIs impératives du widget.
+    this.record = owl.useState({ ...(this.props.initialValues || {}) });
     // OWL 2 n'expose pas this.el : la racine du template porte t-ref="root".
     this.rootRef = owl.useRef("root");
-    // Promesse exposée à mountFormRenderer (voir plus bas).
-    this.ready = Promise.resolve();
-    owl.onMounted(() => {
-      this.ready = this.mountFieldSlots();
+    // Contexte des <FormField> (comme la propagation du record aux
+    // composants <Field> du webclient) : sous-env OWL -- visible de tout
+    // le sous-arbre du renderer, propre à cette instance (chaque App OWL
+    // a de toute façon son propre env). L'env racine est gelé :
+    // useSubEnv est la voie prévue par OWL.
+    owl.useSubEnv({
+      __formCtx: {
+        record: this.record,
+        fieldsInfo: this.props.fieldsInfo || {},
+        fieldNodes: this.props.fieldNodes || [],
+        hasRecordId: !!this.props.hasRecordId,
+        securityContext: this.props.securityContext,
+      },
     });
+    // Les champs sont des composants du template : dès la fin du mount
+    // OWL, toutes les saisies existent (plus de remplissage différé).
+    // La promesse `ready` est conservée pour le contrat du contrôleur.
+    this.ready = Promise.resolve();
   }
 
   /**
-   * Remplit les emplacements data-form-slot avec les cellules de champs
-   * produites par renderField() -- le pont entre le template OWL compilé
-   * et les widgets de champ du moteur (contrat sérialiseur préservé).
-   * Retourne une promesse résolue lorsque TOUS les widgets OWL montés
-   * dans ces emplacements existent (field_bridge._owlReady).
+   * API état (publiée sur le host par mountFormRenderer::_formState) :
+   * - getValues() : mêmes formes que collectFormData (contrat sérialiseur) ;
+   * - applyGraph() : réinjection RÉACTIVE du résultat des règles métier
+   *   (remplace applyDocumentGraphToDom). Champs scalaires racine
+   *   uniquement : m2o/m2m/o2m passent par leurs canaux dédiés (hidden
+   *   inputs / APIs du widget), comme avant. Un champ en cours de saisie
+   *   (input focalisé) n'est jamais écrasé -- même garde-fou que
+   *   applyDocumentGraphToDom.
    */
-  async mountFieldSlots() {
-    const root = this.rootRef.el;
-    const pending = [];
+  getValues() {
+    return collectFormData(this.rootRef.el, this.props.fieldsInfo);
+  }
 
-    for (const slot of this.props.fieldSlots || []) {
-      const host = root.querySelector(`[data-form-slot="${slot.index}"]`);
-      if (!host) continue;
-
-      if (slot.kind === "statusbar") {
-        // Widget statusbar (views/fields/statusbar/) -- composant OWL
-        // monté par le field bridge : sa promesse _owlReady rejoint les
-        // autres, FormRenderer.ready garantit aussi son affichage.
-        const info = this.props.fieldsInfo[slot.name];
-        const wrapper = renderStatusbarField(
-          slot.name,
-          info,
-          slot.node,
-          (this.props.initialValues || {})[slot.name]
-        );
-        if (wrapper) {
-          if (wrapper._owlReady) pending.push(wrapper._owlReady);
-          host.replaceWith(wrapper);
-        }
-        continue;
-      }
-
-      const cell = renderField(
-        slot.node,
-        this.props.fieldsInfo,
-        this.props.initialValues,
-        this.props.securityContext,
-        this.props.hasRecordId
-      );
-      if (!cell) {
-        host.remove();
-        continue;
-      }
-
-      if (slot.mode === "widget") {
-        // Paire <label for="x"/> : seuls les enfants du .o_field_widget
-        // entrent dans la cellule de saisie du template.
-        const widget = cell.querySelector(".o_field_widget") || cell;
-        pending.push(...collectOwlReady([widget]));
-        host.replaceWith(...Array.from(widget.childNodes));
-      } else {
-        if (slot.mode === "cell-nolabel") {
-          const label = cell.querySelector(":scope > label");
-          if (label) label.remove();
-        }
-        pending.push(...collectOwlReady([cell]));
-        host.replaceWith(cell);
-      }
+  applyGraph(graph) {
+    const root = graph && graph.root ? graph.root : {};
+    for (const [name, value] of Object.entries(root)) {
+      const info = this.props.fieldsInfo[name];
+      if (!info) continue;
+      if (info.type === "one2many" || info.type === "many2one" || info.type === "many2many") continue;
+      const active = document.activeElement;
+      if (active && active.id === `field-${name}`) continue; // saisie en cours
+      if (this.record[name] !== value) this.record[name] = value;
     }
-
-    await Promise.all(pending);
   }
 
   onTabClick(ev, index) {
@@ -135,24 +121,6 @@ export class FormRenderer extends owl.Component {
 }
 
 /**
- * Collecte les promesses _owlReady des widgets de champ (spans du field
- * bridge) contenus dans les nœuds insérés.
- */
-function collectOwlReady(nodes) {
-  const promises = [];
-  for (const node of nodes) {
-    if (!node.querySelectorAll) continue;
-    if (node.matches && node.matches("[data-owl-field]") && node._owlReady) {
-      promises.push(node._owlReady);
-    }
-    node.querySelectorAll("[data-owl-field]").forEach((span) => {
-      if (span._owlReady) promises.push(span._owlReady);
-    });
-  }
-  return promises;
-}
-
-/**
  * Monte le renderer OWL dans `target` pour l'arch donnée.
  * @param {HTMLElement} target - conteneur (déjà inséré dans le DOM)
  * @param {string} archXml - arch XML brute de la vue form
@@ -162,7 +130,8 @@ function collectOwlReady(nodes) {
  * @param {Function|null} onObjectButtonClick - callback boutons type="object"
  * @returns {Promise<{ el: HTMLElement, ready: Promise, destroy: Function }>}
  *   el : la racine .o_form_view rendue (contrat form_controller),
- *   ready : promesse résolue quand tous les widgets de champ sont montés.
+ *   ready : promesse résolue quand le formulaire est rendu (contrat
+ *   conservé : le contrôleur l'attend avant la 1re passe de règles).
  */
 export async function mountFormRenderer(target, archXml, fieldsInfo, initialValues = {}, securityContext = null, onObjectButtonClick = null) {
   const parsed = parseFormViewArch(archXml);
@@ -192,7 +161,8 @@ export async function mountFormRenderer(target, archXml, fieldsInfo, initialValu
     FormRenderer,
     target,
     {
-      fieldSlots: compiled.fieldSlots,
+      // fieldSlots (parseur) == fieldNodes consommés par <FormField>.
+      fieldNodes: compiled.fieldSlots,
       headerButtons: compiled.headerButtons,
       fieldsInfo,
       initialValues: initialValues || {},
@@ -204,5 +174,17 @@ export async function mountFormRenderer(target, archXml, fieldsInfo, initialValu
   );
 
   const el = (component.rootRef && component.rootRef.el) || target.firstElementChild;
+
+  // API état (chemin réactif) : le contrôleur l'utilise pour réinjecter
+  // le résultat des règles dans le record réactif. Publiée sur le target
+  // (contrat currentContainer) ET la racine rendue.
+  const formState = {
+    record: component.record,
+    getValues: () => component.getValues(),
+    applyGraph: (graph) => component.applyGraph(graph),
+  };
+  target._formState = formState;
+  if (el) el._formState = formState;
+
   return { el, ready: component.ready, destroy };
 }

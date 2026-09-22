@@ -251,6 +251,18 @@ export class One2manyFieldOwl extends owl.Component {
   setup() {
     this.rootRef = owl.useRef("root");
     this.overlayHostRef = owl.useRef("overlayHost");
+    // Pipeline <FormField> : publication des APIs du one2many sur
+    // l'hôte [data-o2m-root] rendu par le composant Field (contrat
+    // sérialiseur inchangé -- le bridge faisait pareil via
+    // renderOwlField). Les enfants montent AVANT le parent : au
+    // onMounted de celui-ci, closest() trouve toujours l'hôte.
+    owl.onMounted(() => {
+      const host = this.rootRef.el && this.rootRef.el.closest('[data-o2m-root="true"]');
+      if (host && host !== this.rootRef.el) {
+        this._attachToHost(host);
+        host._owlComponent = this;
+      }
+    });
 
     const columns = (this.props.columns || []).map((col) => ({ ...col }));
     const initialRows = Array.isArray(this.props.initialValue) ? this.props.initialValue : [];
