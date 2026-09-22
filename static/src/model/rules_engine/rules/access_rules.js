@@ -1,31 +1,22 @@
 /**
  * model/rules_engine/rules/access_rules.js
  * ===========================================
- * Règles d'accès génériques (applicables à tous les modèles, model: "*") :
- *  - droits CRUD (ir.model.access) : déplacé depuis
- *    core/user_service.js::canPerform()
- *  - visibilité par groupe (attribut XML groups="...") : déplacé depuis
- *    core/py_js/py_utils.js::isNodeVisible()
+ * Règle d'accès générique (model: "*") : visibilité par groupe
+ * (attribut XML groups="...") -- déplacée depuis
+ * core/py_js/py_utils.js::isNodeVisible().
  *
- * Ces règles ne dépendent pas d'un modèle précis car l'algorithme est
- * identique pour tous les modèles -- seules les données (securityContext)
- * varient, et celles-ci sont déjà résolues par model: "*" avant l'appel.
+ * Ne dépend d'aucun modèle précis : l'algorithme est identique pour tous
+ * les modèles -- seules les données (securityContext) varient.
+ *
+ * NB (purge) : l'ancienne règle "generic_crud_rights" (droits CRUD
+ * ir.model.access + le wrapper canPerform de user_service) a été
+ * supprimée : JAMAIS branchée depuis le 1er commit (aucun appelant) --
+ * le contrôle d'accès effectif reste serveur, au rejeu des méthodes.
+ * Si un jour les boutons doivent se griser selon les droits locaux,
+ * recréer la règle ET la brancher (ex. form_controller::onObjectButtonClick).
  */
 
 export const accessRules = [
-  {
-    model: "*",
-    type: "access",
-    subtype: "crud",
-    name: "generic_crud_rights",
-    // securityContext: { is_admin, rights: {read, write, create, unlink} }
-    // action: "read" | "write" | "create" | "unlink"
-    evaluate(securityContext, action) {
-      if (!securityContext) return false; // pas encore de droits en cache -- refus par prudence
-      if (securityContext.is_admin) return true;
-      return !!(securityContext.rights && securityContext.rights[action]);
-    },
-  },
   {
     model: "*",
     type: "access",

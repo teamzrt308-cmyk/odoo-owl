@@ -510,22 +510,13 @@ export function checkOndeleteGuard(model, record) {
 }
 
 // ---------------------------------------------------------------------------
-// Règles "access" : droits CRUD (ir.model.access) + visibilité par groupe.
-// Déplacées depuis core/user_service.js::canPerform() et
-// core/py_js/py_utils.js::isNodeVisible() -- voir rules/access_rules.js.
+// Règles "access" : visibilité par groupe (attribut XML groups="...").
+// Déplacée depuis core/py_js/py_utils.js::isNodeVisible() --
+// voir rules/access_rules.js. (NB : la règle CRUD ir.model.access qui
+// vivait ici a été supprimée -- jamais branchée depuis le 1er commit,
+// aucun contrôleur ne consultait canPerform ; le contrôle d'accès réel
+// reste serveur, au rejeu des méthodes.)
 // ---------------------------------------------------------------------------
-
-/**
- * @param {string} model
- * @param {string} action - "read" | "write" | "create" | "unlink"
- * @param {Object} securityContext - { is_admin, rights } (voir user_service.js)
- * @returns {boolean}
- */
-export function canPerformAction(model, action, securityContext) {
-  const rules = getRulesForModel(model, "access").filter((r) => r.subtype === "crud");
-  if (rules.length === 0) return false; // pas de règle enregistrée -- refus par défaut, comme l'ancien canPerform()
-  return rules.every((rule) => safeEvaluate(rule, securityContext, action) !== false);
-}
 
 /**
  * @param {string} groupsAttr - valeur brute de l'attribut XML groups="..."

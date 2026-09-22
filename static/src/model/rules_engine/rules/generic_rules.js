@@ -10,10 +10,11 @@
  *
  * Les noms de champs réels varient selon le modèle affiché (product_qty,
  * product_uom_qty, quantity...) et sont détectés dynamiquement côté
- * appelant (voir QTY_FIELD_CANDIDATES/PRICE_FIELD_CANDIDATES dans
- * compute_engine.js) -- cette règle travaille donc sur des clés
- * canoniques (__qty/__price), fournies par l'appelant, plutôt que sur des
- * noms de champs Odoo réels comme les autres règles.
+ * appelant (QTY_FIELD_CANDIDATES/PRICE_FIELD_CANDIDATES dans
+ * views/fields/one2many/one2many_field.js, ex-compute_engine.js) --
+ * cette règle travaille donc sur des clés canoniques (__qty/__price),
+ * fournies par l'appelant, plutôt que sur des noms de champs Odoo réels
+ * comme les autres règles.
  */
 
 export const genericLineAmountRules = [

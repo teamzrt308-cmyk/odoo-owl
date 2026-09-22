@@ -18,24 +18,32 @@
  * Type "object_action" : chaque règle porte
  *   - fromStates       : états depuis lesquels le clic est autorisé
  *                        (Odoo masque le bouton via invisible="state !=
- *                        ..." ; le moteur REVALIDE -- canRunObjectAction)
+ *                        ..." ; le moteur REVALIDE -- canRunObjectAction) ;
+ *                        null = couvrante sans verrou d'état (clic
+ *                        silencieux, cf. quotation_send/rfq_send) ;
  *   - optimisticState(documentGraph) : champs à fusionner IMMÉDIATEMENT
  *                        sur la fiche (state, locked...) pour que
- *                        l'écran reflète l'action hors ligne ;
- *   - guard            : verdicts métier optionnels avant clic.
+ *                        l'écran reflète l'action hors ligne.
+ *   (Pas de propriété "guard" : jamais implémentée côté moteur -- ne
+ *   pas documenter une option inexistante.)
  *
  * L'appel RÉEL reste queueMethodCall(model, id, method) dans
  * form_controller.js : à la synchronisation, le serveur rejoue la
  * méthode Python authentique (messages, sous--actions, etc.). Ces
  * règles ne reproduisent que la PARTIE LOCALE, purement déterministe.
  *
+ * Cas particulier action_quotation_send / action_rfq_send : portées en
+ * règles COUVRANTES sans verrou d'état (fromStates: null, aucun effet
+ * local) -- l'effet serveur (e-mail) reste au rejeu, mais le clic reste
+ * possible hors ligne et l'action part en file.
+ *
  * Méthodes volontairement NON portées (effets serveur non reproductibles
- * hors ligne : paiements, facturation, e-mails, impressions, wizards) :
+ * hors ligne : paiements, facturation, impressions, wizards) :
  * payment_action_capture/void, action_create_invoice, action_create_project,
- * action_view_picking/print_quotation/do_print_picking, action_rfq_send,
+ * action_view_picking/print_quotation/do_print_picking,
  * action_update_quantity_on_hand, action_open_label_*... -> pas de règle,
  * le couple (modèle, méthode) reste "non couvert" (canRunObjectAction ->
- * covered:false) et le clic continue de mettre l'action en file.
+ * covered:false) et le clic est refusé (toast) sans rien mettre en file.
  */
 
 const noopOptimistic = () => ({ root: {}, lineUpdates: {} });

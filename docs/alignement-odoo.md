@@ -608,3 +608,30 @@ Suite : `test-vault-security.mjs` (18 assertions) ; batteries : 21/21.
 
 Suite : `scripts/tests/test-security-hardening.mjs` (20 assertions :
 CSP, intercepteur 401, logoutServeur). Batterie complète : 20/20.
+
+## Purge du code mort dans rules/ (revue d'ensemble)
+
+Revue croisée des 10 fichiers de `model/rules_engine/rules/` (chaque
+règle/construct x consommateurs réels) :
+
+- **SUPPRIMÉ -- chaîne CRUD jamais branchée** : règle
+  `generic_crud_rights` (access_rules.js), `canPerformAction()`
+  (rules_engine.js) et `canPerform()` (user_service.js) -- 0 appelant
+  depuis le 1er commit (`git log -S`). Le contrôle d'accès effectif
+  reste serveur, au rejeu des méthodes Python. La règle `groups`
+  (visibilité XML) est conservée : elle est vivante
+  (py_utils::isNodeVisible). Si un jour les boutons doivent se griser
+  selon les droits locaux : recréer la règle ET la brancher dans
+  form_controller.
+- **Conservés après vérification (vivants)** : generic_rules
+  (`runLineRules("*", {__qty,__price})` du one2many), default_rules
+  (py_utils:85), access groups (py_utils:136), domain_rules des 2
+  sous-types (purchase_dashboard + filterByRecordRule liste/kanban),
+  les 15 object_action + stock_effect + constraints + computes
+  (form_controller), ondelete_guard (moteur + one2many, règles à
+  venir).
+- **Commentaires réparés** : generic_rules pointait vers
+  compute_engine.js (fichier supprimé -> one2many_field.js) ;
+  l'en-tête de workflow_rules prétendait que action_rfq_send n'était
+  pas portée (elle l'est, règle couvrante) et documentait une option
+  `guard` jamais implémentée.
