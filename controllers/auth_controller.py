@@ -26,7 +26,14 @@ class AuthController(http.Controller, OfflineSyncMixin):
 
         if request.httprequest.method == "OPTIONS":
             return self._cors_response()
-        return self._cors_response(json.dumps({"status": "ok"}))
+        # Echo de la base resolue par le dispatch (host/db_filter/?db=) :
+        # la PWA la compare au tampon de sa session au boot. Aucun acces
+        # env ici -- la route reste utilisable meme sans base resolue.
+        try:
+            dbname = request.env.cr.dbname
+        except Exception:
+            dbname = None
+        return self._cors_response(json.dumps({"status": "ok", "db": dbname}))
 
     @http.route(
             "/offline_sync/login", 
@@ -73,4 +80,9 @@ class AuthController(http.Controller, OfflineSyncMixin):
             "uid": user.id,
             "name": user.name,
             "api_key": user.offline_sync_api_key,
+            # Base resolue pour cette requete : la PWA la stocke dans sa
+            # session ("tampon de base") et la verifie au boot -- garde
+            # anti-divergence en deploiement multi-bases (cf. db_filter,
+            # selecteur de base / parametre ?db=).
+            "db": request.env.cr.dbname,
         }))
