@@ -12,7 +12,7 @@
 | 6 | CORS précis | ✅ fail-safe `*` refusé + normalisation — **config requise** |
 | 7 | Push robuste (try/action + plafonds) | ✅ implémenté |
 | 8 | 4 bugs mineurs audit | ✅ corrigés (a/b/c/d) |
-| 9 | PIN WebCrypto session PWA | ⏳ décision en attente (option) |
+| 9 | Coffre de session PWA (mot de passe Odoo, PAS de PIN) | ✅ implémenté côté PWA |
 | 10 | Logs & alertes | ✅ implémenté (`odoo.log`) |
 | 11 | Hygiène infra | 🔧 **config déploiement** — voir ci-dessous |
 
@@ -86,6 +86,20 @@ proxy_mode = True                  ; derrière nginx (mesure 1)
   non utilisées — et supprimer les liens codés en dur du template de
   login PWA ;
 - maintenir Odoo + dépendances à jour.
+
+## 9. Coffre de session PWA (implémenté -- mot de passe, PAS de PIN)
+
+La clé API n'est plus stockée en clair sur l'appareil : chiffrée
+AES-GCM 256 avec une clé dérivée PBKDF2-SHA256 (210 000 itérations) du
+**mot de passe Odoo** de l'utilisateur (aucun nouveau secret). Au boot,
+l'app est verrouillée (écran « Déverrouiller ») tant que le mot de
+passe n'est pas resaisi ; « mot de passe oublié » = purge locale +
+reconnexion (la clé est régénérée par le serveur). Appareil volé /
+onglet fermé = session inutilisable hors ligne. En contrepartie, ce
+chiffrement ne protège PAS contre un malware actif dans l'onglet ouvert
+(clé vivante en sessionStorage). Repli : sans https (WebCrypto
+indisponible), l'app dégrade en stockage legacy en clair -- la mesure 1
+(HTTPS) reste prérequis.
 
 ## 3+4. Cycle de vie de la clé API (implémenté)
 
