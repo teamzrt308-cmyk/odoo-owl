@@ -4,11 +4,10 @@
 
 import { CONFIG, getApiKey, getSession, clearSession } from "../../core/browser/session.js";
 import { getCachedApps, saveCachedApps } from "../menus/menu_service.js";
-import { getCachedModuleManifest } from "../../views/view_service.js";
+import { getCachedModuleManifest, getModuleManifest } from "../../views/view_service.js";
 import { downloadFullApp } from "../offline_prefetch_service.js";
 import { registry } from "../../core/registry.js";
 import { bus } from "../../core/bus/bus_service.js";
-import { getModuleManifest } from "../../views/view_service.js";
 import { resolveNaturalLanding } from "../navbar/navbar.js";
 import { saveCachedProfile, getCachedProfile } from "../../core/user_service.js";
 
@@ -61,7 +60,6 @@ function mountHomeMenu(container, params, env) {
   const grid = container.querySelector("#modules-grid");
   const statusEl = container.querySelector("#sync-status");
   const refreshBtn = container.querySelector("#refresh-modules-btn");
-  const switcherDropdown = container.querySelector("#app-switcher-dropdown");
 
   async function openApp(app, cardEl) {
     const custom = CUSTOM_IMPLEMENTATIONS[app.technical_name];
@@ -124,38 +122,10 @@ function mountHomeMenu(container, params, env) {
       card.innerHTML = `
         <div class="icon-wrapper"><img src="${iconSrc}" alt="${app.label}" onerror="this.src='assets/default-app.png'"></div>
         <p>${app.label}</p>
-        <span class="module-badge">${isReady ? "Disponible" : "Non pris en charge"}</span>
-        ${isReady ? `
-          <button class="download-btn" data-module="${app.technical_name}">
-            ${isCached ? "Mis à jour" : "Télécharger"}
-          </button>
-        ` : ""}
       `;
 
       if (isReady) {
-        card.addEventListener("click", (e) => {
-          if (e.target.classList.contains("download-btn")) return;
-          openApp(app, card);
-        });
-
-        const downloadBtn = card.querySelector(".download-btn");
-        downloadBtn.addEventListener("click", async (e) => {
-          e.stopPropagation();
-          downloadBtn.disabled = true;
-
-          try {
-            const apiKey = getApiKey();
-            await downloadFullApp(app.technical_name, apiKey, CONFIG.ODOO_BASE_URL, (message) => {
-              downloadBtn.textContent = message;
-            });
-            downloadBtn.textContent = "Disponible hors-ligne";
-          } catch (err) {
-            console.error(err);
-            downloadBtn.textContent = "Échec — réessayer";
-          } finally {
-            downloadBtn.disabled = false;
-          }
-        });
+        card.addEventListener("click", () => openApp(app, card));
       }
 
       grid.appendChild(card);
@@ -190,7 +160,6 @@ function mountHomeMenu(container, params, env) {
       const data = await response.json();
       await saveCachedApps(data.apps);
       renderModulesGrid(data.apps);
-      statusEl.textContent = `${data.apps.length} app(s) installée(s) détectée(s)`;
     } catch (err) {
       statusEl.textContent = "Impossible de contacter Odoo — liste locale utilisée";
       renderModulesGrid(await getCachedApps());
@@ -202,6 +171,20 @@ function mountHomeMenu(container, params, env) {
   refreshBtn.addEventListener("click", refreshInstalledApps);
 
   async function loadDashboardInfo() {
+    if (!navigator.onLine) {
+      const cachedProfile = await getCachedProfile();
+      const session = getSession();
+      if (cachedProfile) {
+        bus.trigger("user:info", {
+          initial: cachedProfile.initial,
+          name: cachedProfile.name,
+          companyName: cachedProfile.companyName,
+        });
+      } else if (session) {
+        bus.trigger("user:info", { initial: (session.name || "?")[0].toUpperCase(), name: session.name });
+      }
+      return;
+    }
     try {
       const response = await fetch(`${CONFIG.ODOO_BASE_URL}/offline_sync/dashboard_info`, {
         headers: { Authorization: `Bearer ${getApiKey()}` },

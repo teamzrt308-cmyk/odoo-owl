@@ -3,11 +3,10 @@
  * Translates an Odoo conditional expression (syntax similar to Python:
  * not / and / or / in / not in / True / False) into evaluable JavaScript,
  * while keeping field names intact for subsequent resolution.
+ * Also evaluates Odoo domains (prefix notation) against a record.
 */
 
-import { isAllowedByGroups, getDefaultValue } from "../../model/rules_engine/rules_engine.js";
-
-// Transpiles an Odoo Python expression string into a 
+// Transpiles an Odoo Python expression string into a
 // valid JavaScript conditional expression.
 export function translateOdooExprToJs(expr) {
   let js = expr;
@@ -67,6 +66,7 @@ export function evaluateSimpleCondition(expr, currentValues, parentValues = null
     expr = resolveParentReferences(expr, parentValues);
   }
 
+  const isNewRecord = !currentValues || !currentValues.id;
   const values = { ...(currentValues || {}) };
 
   // Alignement sur la sémantique Python : une liste vide (one2many/
@@ -78,18 +78,14 @@ export function evaluateSimpleCondition(expr, currentValues, parentValues = null
     }
   }
 
-  // Valeur par défaut implicite (nouvel enregistrement -> state "draft")
-  // désormais gérée par rules_engine (voir rules/default_rules.js) plutôt
-  // que codée en dur ici.
-  if (values.state === undefined || values.state === false) {
-    const defaultState = getDefaultValue("*", "state", currentValues);
-    if (defaultState !== undefined) values.state = defaultState;
+  if (isNewRecord && (values.state === undefined || values.state === false)) {
+    values.state = "draft";
   }
 
   const jsExpr = translateOdooExprToJs(expr);
 
   // Fields referenced in the expression but missing from the current
-  // values ​​-> treated as "false" (Odoo's default behavior).
+  // values -> treated as "false" (Odoo's default behavior).
   const identifiers = jsExpr.match(/\b[A-Za-z_]\w*\b/g) || [];
   const reserved = new Set(["true", "false", "includes"]);
   identifiers.forEach((id) => {
@@ -118,11 +114,11 @@ export function isNodeVisible(node, securityContext, currentValues) {
     if (result === true) return false;
   }
 
-  // Résolution du "groups" désormais gérée par rules_engine (voir
-  // rules/access_rules.js) plutôt que codée en dur ici.
   const groupsAttr = node.getAttribute("groups");
-  if (groupsAttr && !isAllowedByGroups(groupsAttr, securityContext)) {
-    return false;
+  if (groupsAttr) {
+    if (!groupsAttr.startsWith("!") && (!securityContext || !securityContext.is_admin)) {
+      return false;
+    }
   }
 
   return true;
@@ -131,7 +127,7 @@ export function isNodeVisible(node, securityContext, currentValues) {
 /**
  * Évalue une feuille de domaine Odoo [field, op, value] contre un record.
  * Les opérateurs non gérés sont traités comme toujours vrais (ne bloquent
- * pas la correspondance) -- comportement hérité de l'ancien domainToExpr().
+ * pas la correspondance).
  */
 function evaluateDomainLeaf(record, [field, op, value]) {
   const raw = record ? record[field] : undefined;
@@ -152,15 +148,12 @@ function evaluateDomainLeaf(record, [field, op, value]) {
 
 /**
  * Évalue un domaine Odoo complet en notation préfixe standard
- * (ex: ['&', a, '|', b, c] = a AND (b OR c)) -- pas seulement une liste de
- * triplets combinés en ET implicite comme le faisait l'ancien
- * domainToExpr(), qui interprétait à tort '&'/'|' comme des noms de champ.
+ * (ex: ['&', a, '|', b, c] = a AND (b OR c)).
  *
- * Algorithme classique : parcours DROITE -> GAUCHE avec une pile. Chaque
- * opérateur préfixe consomme les résultats déjà empilés par ses opérandes
- * (qui le suivent dans le tableau, donc précèdent dans le parcours
- * inversé). Un domaine "plat" sans opérateur explicite (ancien
- * comportement) reste combiné en ET implicite via stack.every() à la fin.
+ * Parcours DROITE -> GAUCHE avec une pile : chaque opérateur préfixe
+ * consomme les résultats déjà empilés par ses opérandes. Un domaine
+ * "plat" sans opérateur explicite reste combiné en ET implicite via
+ * stack.every() à la fin.
  */
 function evaluateDomainArray(record, domain) {
   const stack = [];
@@ -186,9 +179,8 @@ function evaluateDomainArray(record, domain) {
 }
 
 /**
- * Teste si un record correspond à un domaine Odoo (menu Devis/Commandes,
- * record rules ir.rule...). Supporte désormais '&'/'|'/'!' préfixés, plus
- * seulement l'ET implicite entre triplets.
+ * Teste si un record correspond à un domaine Odoo (menu Devis/Commandes...).
+ * Supporte '&'/'|'/'!' préfixés, en plus de l'ET implicite entre triplets.
  */
 export function matchesDomain(record, domain) {
   if (!domain || domain.length === 0) return true; // pas de domaine = toujours correspondant

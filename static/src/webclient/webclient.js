@@ -2,6 +2,7 @@
  * webclient/webclient.js
  */
 
+import { mountAppsMenu } from "./navbar/apps_menu.js";
 import "./conflict_detail.js";
 import { router } from "../core/browser/router_service.js";
 import { bus } from "../core/bus/bus_service.js";
@@ -13,6 +14,7 @@ import { mountSyncStatusPanel } from "./navbar/sync_status_panel.js";
 import { mountConnectivityIndicator } from "./navbar/connectivity_indicator.js";
 import { mountConflictPanel } from "./navbar/conflict_panel.js"; 
 import { mountUserMenu } from "./user_menu/user_menu.js";
+import { mountAssistantPanel } from "./assistant/assistant_panel.js";
 import { loadOdooAssets, unloadOdooAssets } from "../core/assets.js";
 
 const NAVBAR_TEMPLATE = `
@@ -55,6 +57,12 @@ const NAVBAR_TEMPLATE = `
           <span id="badge-sync-conflicts" class="o-mail-MessagingMenu-counter badge rounded-pill bg-warning" style="display:none;"></span>
         </button>
         <div id="conflict-status-dropdown" class="dropdown-menu dropdown-menu-end p-0" style="min-width: 340px; max-height: 420px; overflow-y: auto;"></div>
+      </div>
+      <div class="o-dropdown dropdown o_apps_download_menu o-dropdown--no-caret">
+        <button id="apps-download-btn" type="button" class="dropdown-toggle" tabindex="0" aria-expanded="false" title="Applications">
+          <i class="fa fa-lg fa-th-large" role="img" aria-label="Applications"></i>
+        </button>
+        <div id="apps-download-dropdown" class="dropdown-menu dropdown-menu-end p-0" style="min-width: 300px; max-height: 420px; overflow-y: auto;"></div>
       </div>
       <div class="o-dropdown dropdown o_switch_company_menu d-none d-md-block o-dropdown--no-caret">
         <button type="button" class="dropdown-toggle" tabindex="0" aria-expanded="false">
@@ -127,9 +135,11 @@ export function mountWebclient() {
   const actionService = createActionService(container);
 
   const syncStatusPanel = mountSyncStatusPanel(navbarRoot);
+  const assistantPanel = mountAssistantPanel(navbarRoot);
   mountConflictPanel(navbarRoot, actionService);
   mountConnectivityIndicator(navbarRoot);
   mountUserMenu(navbarRoot, actionService);
+  mountAppsMenu(navbarRoot);
 
   const appTitleEl = navbarRoot.querySelector("#app-title");
   const menuHorizontalEl = navbarRoot.querySelector("#menu-horizontal");
