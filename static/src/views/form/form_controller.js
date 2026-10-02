@@ -9,15 +9,12 @@ import { bus } from "../../core/bus/bus_service.js";
 import { CONFIG, getApiKey } from "../../core/browser/session.js";
 import { getModuleManifest, resolveModelViews } from "../view_service.js";
 import { getReferenceRecordsSmart } from "../../core/name_service.js";
-import { getRecordSmart } from "../../core/record_cache.js";
+import { getRecordSmart, getCachedRecord } from "../../core/record_cache.js";
 import { getSecurityInfo } from "../../core/user_service.js";
 import { renderFormView } from "./form_renderer.js";
-import { attachLiveBusinessRules } from "../../model/relational_model/relational_model.js";
-import { runDocumentRules, validateDocument, computeStockEffects, computeOptimisticStateUpdate } from "../../model/rules_engine/rules_engine.js";
-import { collectFormData, buildDocumentGraph, applyDocumentGraphToDom, applyLineRowToDom } from "./form_serializer.js";
-import { addLedgerDelta, getAggregatedDeltasByField } from "../../core/local_ledger.js";
-import { patchCachedRecord } from "../../core/record_cache.js";
-import { router } from "../../core/browser/router_service.js";
+import { attachLiveBusinessRules, attachLiveOnchange } from "../../model/relational_model/relational_model.js";
+import { constraintsRegistry } from "../../model/relational_model/business_rules_registry.js";
+import { collectFormData } from "./form_serializer.js";
 import {
   queueAction,
   queueMethodCall,
@@ -42,14 +39,20 @@ export async function mountFormController(container, params, env) {
 
   const apiKey = getApiKey();
 
-  let currentRecordId = id ? parseInt(id, 10) : null;
-  let pendingCreateUuid = null;
+  const isLocalId = typeof id === "string" && id.startsWith("local:");
+  let currentRecordId = id && !isLocalId ? parseInt(id, 10) : null;
+  // Fiche créée hors ligne, pas encore synchronisée : on la retrouve
+  // dans la file (sync_queue) via son UUID local plutôt que de la
+  // traiter comme un enregistrement serveur classique.
+  let pendingCreateUuid = isLocalId ? id.slice(6) : null;
   let currentReferenceWriteDate = null;
   let currentReferenceValues = {};
   let currentContainer = null;
   let currentFieldsInfo = null;
   let cleanupRules = () => {};
-  let rulesSyncTimer = null;
+  let cleanupOnchange = () => {};
+
+  const onchangeHelpers = { getReferenceRecordsSmart, getRecordSmart, apiKey, baseUrl: CONFIG.ODOO_BASE_URL };
 
   // NEW — promoted to closure variables (previously: local to the try
   // block) so that saveRecord() can rebuild the form after a
@@ -116,6 +119,9 @@ export async function mountFormController(container, params, env) {
       currentReferenceWriteDate = initialValues.__reference_write_date__ || null;
       const { __reference_write_date__, ...cleanValues } = initialValues;
       currentReferenceValues = cleanValues;
+    } else if (pendingCreateUuid) {
+      // Pas d'appel réseau ici : cet ID n'existe que localement.
+      initialValues = (await getCachedRecord(model, id)) || {};
     }
 
     const securityInfo = await getSecurityInfo(model);
@@ -125,10 +131,7 @@ export async function mountFormController(container, params, env) {
     formEl.dataset.model = model;
     container.insertBefore(formEl, statusEl);
     cleanupRules = attachLiveBusinessRules(archXml, formEl, fieldsInfo);
-    formEl.addEventListener("input", scheduleDocumentRulesSync);
-    formEl.addEventListener("change", scheduleDocumentRulesSync);
-    scheduleDocumentRulesSync(); // premier passage (ex: amount_total sur un nouveau document)
-    applyLedgerAdjustmentsToForm(); // ex: qty_received déjà ajustée par une réception validée hors-ligne
+    cleanupOnchange = attachLiveOnchange(model, formEl, fieldsInfo, onchangeHelpers);
 
     currentContainer = formEl;
     currentFieldsInfo = fieldsInfo;
@@ -140,7 +143,9 @@ export async function mountFormController(container, params, env) {
 
     statusEl.textContent = navigator.onLine ? "" : "Mode hors-ligne — données mises en cache.";
 
-    const recordLabel = currentRecordId ? initialValues.name || `#${currentRecordId}` : "Nouveau";
+    const recordLabel = (currentRecordId || pendingCreateUuid)
+      ? initialValues.name || `#${currentRecordId || pendingCreateUuid}`
+      : "Nouveau";
     cp.breadcrumbCurrent.textContent = recordLabel;
   } catch (err) {
     console.error(err);
@@ -171,129 +176,13 @@ export async function mountFormController(container, params, env) {
     newFormEl.dataset.model = model;
 
     cleanupRules();
+    cleanupOnchange();
     currentContainer.replaceWith(newFormEl);
     currentContainer = newFormEl;
     cleanupRules = attachLiveBusinessRules(archXml, newFormEl, currentFieldsInfo);
-    newFormEl.addEventListener("input", scheduleDocumentRulesSync);
-    newFormEl.addEventListener("change", scheduleDocumentRulesSync);
-    scheduleDocumentRulesSync();
-    applyLedgerAdjustmentsToForm();
+    cleanupOnchange = attachLiveOnchange(model, newFormEl, currentFieldsInfo, onchangeHelpers);
 
     cp.breadcrumbCurrent.textContent = freshRecord.name || `#${currentRecordId}`;
-  }
-
-  /**
-   * NEW — branche runDocumentRules() (compute/onchange en cascade sur
-   * racine + lignes, ex: amount_total = f(order_line.price_total)) sur le
-   * formulaire réellement affiché. Jusqu'ici cette fonction du moteur
-   * n'était appelée par aucun fichier -- voir audit rules_engine.
-   * Débounce léger car buildDbSnapshot() interroge Dexie à chaque appel.
-   */
-  function scheduleDocumentRulesSync() {
-    if (!currentContainer || !currentFieldsInfo) return;
-    clearTimeout(rulesSyncTimer);
-    rulesSyncTimer = setTimeout(async () => {
-      const container = currentContainer;
-      const fieldsInfo = currentFieldsInfo;
-      if (!container || !fieldsInfo) return;
-
-      try {
-        const graph = buildDocumentGraph(container, fieldsInfo, currentReferenceValues);
-        const updatedGraph = await runDocumentRules(model, graph);
-
-        applyDocumentGraphToDom(container, fieldsInfo, updatedGraph);
-
-        for (const [fieldName, { rows }] of Object.entries(updatedGraph.lines || {})) {
-          const fieldWrapper = container.querySelector(`[data-one2many="${fieldName}"] [data-o2m-root="true"]`);
-          if (!fieldWrapper || !fieldWrapper._getTbody) continue;
-          const trs = Array.from(fieldWrapper._getTbody().querySelectorAll("tr")).filter((tr) => tr._cellRefs);
-          trs.forEach((tr, idx) => {
-            if (rows[idx]) applyLineRowToDom(tr, rows[idx]);
-          });
-        }
-      } catch (err) {
-        console.warn("[form_controller] Échec de l'exécution des règles document:", err);
-      }
-    }, 200);
-  }
-
-  /**
-   * NEW — applique les deltas en attente du ledger local (voir
-   * core/local_ledger.js) sur les lignes one2many affichées, pour un
-   * affichage immédiat de qty_received/qty_delivered après validation
-   * d'un bon de réception/livraison, sans attendre la sync avec Odoo.
-   * Générique : fonctionne pour n'importe quel champ ajusté par une
-   * règle "stock_effect" (voir rules/stock_rules.js), pas seulement
-   * qty_received/qty_delivered -- ne connaît pas ces noms de champs.
-   */
-  async function applyLedgerAdjustmentsToForm() {
-    if (!currentContainer || !currentFieldsInfo) return;
-
-    for (const [fieldName, info] of Object.entries(currentFieldsInfo)) {
-      if (info.type !== "one2many" || !info.relation) continue;
-
-      const fieldWrapper = currentContainer.querySelector(`[data-one2many="${fieldName}"] [data-o2m-root="true"]`);
-      if (!fieldWrapper || !fieldWrapper._getTbody) continue;
-
-      const trs = Array.from(fieldWrapper._getTbody().querySelectorAll("tr")).filter((tr) => tr._cellRefs && tr._recordId);
-      for (const tr of trs) {
-        let deltas;
-        try {
-          deltas = await getAggregatedDeltasByField(info.relation, String(tr._recordId));
-        } catch (err) {
-          continue; // pas de ledger pour cette ligne -- rien à ajuster
-        }
-        for (const [field, delta] of Object.entries(deltas)) {
-          const ref = tr._cellRefs[field];
-          if (!ref || ref.el === document.activeElement) continue;
-          const base = parseFloat(ref.el.value) || 0;
-          ref.el.value = (base + delta).toFixed(2);
-        }
-      }
-    }
-  }
-
-  /**
-   * NEW — applique une mise à jour OPTIMISTE locale (voir
-   * rules/stock_rules.js::optimisticState) suite à un clic sur un bouton
-   * objet, sans attendre la synchronisation. Re-rend tout le formulaire
-   * (comme refreshFormFromServer(), mais à partir de données patchées
-   * localement plutôt que du serveur) car le widget statusbar affichant
-   * "state" n'est pas un simple <input> -- un patch DOM ciblé ne le
-   * rafraîchirait pas visuellement.
-   */
-  async function applyOptimisticStateUpdate(methodName, documentGraph) {
-    const optimistic = computeOptimisticStateUpdate(model, methodName, documentGraph);
-    const hasRootUpdate = Object.keys(optimistic.root).length > 0;
-    const hasLineUpdate = Object.keys(optimistic.lineUpdates).length > 0;
-    if (!hasRootUpdate && !hasLineUpdate) return; // aucune règle ne couvre ce couple modèle/méthode
-
-    Object.assign(currentReferenceValues, optimistic.root);
-    if (hasLineUpdate) {
-      for (const fieldName of Object.keys(documentGraph.lines || {})) {
-        if (Array.isArray(currentReferenceValues[fieldName])) {
-          currentReferenceValues[fieldName] = currentReferenceValues[fieldName].map((row) => ({
-            ...row,
-            ...optimistic.lineUpdates,
-          }));
-        }
-      }
-    }
-
-    await patchCachedRecord(model, currentRecordId, currentReferenceValues);
-
-    const patchedRecord = { ...currentReferenceValues, id: currentRecordId };
-    const newFormEl = renderFormView(archXml, currentFieldsInfo, patchedRecord, currentSecurityContext, onObjectButtonClick);
-    newFormEl.dataset.model = model;
-
-    cleanupRules();
-    currentContainer.replaceWith(newFormEl);
-    currentContainer = newFormEl;
-    cleanupRules = attachLiveBusinessRules(archXml, newFormEl, currentFieldsInfo);
-    newFormEl.addEventListener("input", scheduleDocumentRulesSync);
-    newFormEl.addEventListener("change", scheduleDocumentRulesSync);
-    scheduleDocumentRulesSync();
-    applyLedgerAdjustmentsToForm();
   }
 
   /**
@@ -321,31 +210,6 @@ export async function mountFormController(container, params, env) {
 
     try {
       const localUuid = await queueMethodCall(model, currentRecordId, methodName);
-
-      // Effets de stock (voir rules/stock_rules.js) -- ex: valider un bon
-      // de réception/livraison. Calculés à partir de l'état actuel du
-      // formulaire (quantités saisies), écrits dans le ledger local pour
-      // un affichage immédiat sans attendre la sync avec Odoo. N'a aucun
-      // effet si aucune règle "stock_effect" ne couvre ce couple
-      // modèle/méthode (retourne un tableau vide).
-      try {
-        const graph = buildDocumentGraph(currentContainer, currentFieldsInfo, currentReferenceValues);
-        const deltas = await computeStockEffects(model, methodName, graph);
-        for (const d of deltas) {
-          await addLedgerDelta(d.model, d.key, d.deltaField, d.delta, localUuid);
-        }
-        if (deltas.length > 0) bus.trigger("ledger:updated");
-
-        // Mise à jour OPTIMISTE de l'enregistrement lui-même (ex: state
-        // "assigned" -> "done") -- données locales changées TOUT DE SUITE,
-        // avant même de savoir si la connexion est disponible. La vraie
-        // valeur serveur prendra le relais via refreshFormFromServer() une
-        // fois la synchronisation confirmée (voir plus bas).
-        await applyOptimisticStateUpdate(methodName, graph);
-      } catch (err) {
-        console.warn("[form_controller] Échec du calcul des effets de stock:", err);
-      }
-
       statusEl.textContent = "Action enregistrée localement — sera synchronisée dès que possible.";
       bus.trigger("sync:updated");
 
@@ -388,14 +252,16 @@ export async function mountFormController(container, params, env) {
     if (!currentContainer || !currentFieldsInfo) return;
     const formData = collectFormData(currentContainer, currentFieldsInfo);
 
-    // Règle constraint -- aucune n'existe encore dans rules/ pour ce
-    // projet, mais le point de branchement est désormais actif : la
-    // sauvegarde sera bloquée dès qu'une contrainte sera ajoutée.
-    const graphForValidation = buildDocumentGraph(currentContainer, currentFieldsInfo, currentReferenceValues);
-    const validation = await validateDocument(model, graphForValidation);
-    if (!validation.valid) {
-      statusEl.textContent = "Enregistrement bloqué : " + validation.errors.map((e) => e.message).join(" / ");
-      return;
+    // Filet local optionnel : ne remplace jamais la vraie contrainte Python
+    // côté serveur, sert juste à éviter un aller-retour inutile quand la
+    // règle est connue et enregistrée pour ce modèle.
+    const checkConstraint = constraintsRegistry.get(model, null);
+    if (checkConstraint) {
+      const errorMessage = checkConstraint(formData);
+      if (errorMessage) {
+        statusEl.textContent = errorMessage;
+        return;
+      }
     }
 
     try {
@@ -435,7 +301,6 @@ export async function mountFormController(container, params, env) {
         if (wasCreate) {
           currentRecordId = result.createdIds[localUuid];
           pendingCreateUuid = null;
-          router.replaceState({ tag: "form_view", module, model, id: currentRecordId, actionId, listLabel });
         }
 
         if (result.synced > 0) {
@@ -470,7 +335,7 @@ export async function mountFormController(container, params, env) {
   }
 
   return () => {
-    clearTimeout(rulesSyncTimer);
     cleanupRules();
+    cleanupOnchange();
   };
 }
